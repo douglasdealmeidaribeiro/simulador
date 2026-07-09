@@ -241,8 +241,86 @@ def optimize_static_index_match(model):
             if isinstance(cells.get(ref), str) and cells[ref].startswith("=") and "INDEX(" in cells[ref] and "MATCH(" in cells[ref]:
                 cells[ref] = index_pattern_plain.sub(repl, cells[ref])
 
+    restore_dynamic_origin_budget_formulas(model)
     break_origin_circular_rows(model)
     replace_unsupported_cached_formulas(model)
+
+
+def numeric_static_value(sheet, ref):
+    value = sheet["cells"].get(ref)
+    if isinstance(value, str) and value.startswith("="):
+        value = sheet.get("cache", {}).get(ref)
+    return value if isinstance(value, (int, float)) else None
+
+
+def median(values):
+    ordered = sorted(values)
+    if not ordered:
+        return None
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    return (ordered[middle - 1] + ordered[middle]) / 2
+
+
+def restore_dynamic_origin_budget_formulas(model):
+    origem = next((sheet for sheet in model["sheets"] if sheet["name"].endswith("(Origem)")), None)
+    simulador = next((sheet for sheet in model["sheets"] if sheet["name"] == "SIMULADOR"), None)
+    if not origem or not simulador:
+        return
+
+    sim_cells = simulador["cells"]
+    item_to_budget_row = {}
+    for row in range(11, 103):
+        item = simulador.get("cache", {}).get(f"E{row}", sim_cells.get(f"E{row}"))
+        if item:
+            item_to_budget_row[item] = row
+
+    center_to_toggle_row = {}
+    for row in range(11, 27):
+        center = sim_cells.get(f"B{row}")
+        if center:
+            center_to_toggle_row[center] = row
+
+    for ref, formula in list(origem["cells"].items()):
+        if not (ref.startswith("D") and isinstance(formula, str) and formula.startswith("=")):
+            continue
+        row = int(ref[1:])
+        if f"$O{row}:$ACZ{row}" not in formula and "FILTER(" not in formula.upper():
+            continue
+
+        item = origem["cells"].get(f"B{row}")
+        budget_row = item_to_budget_row.get(item)
+        if not budget_row:
+            continue
+
+        center = sim_cells.get(f"F{budget_row}")
+        toggle_row = center_to_toggle_row.get(center)
+        if not toggle_row:
+            continue
+
+        lower = numeric_static_value(origem, f"L{row}")
+        upper = numeric_static_value(origem, f"M{row}")
+        values = []
+        for col in range(col_to_num("O"), col_to_num("ACZ") + 1):
+            number = numeric_static_value(origem, f"{num_to_col(col)}{row}")
+            if number is None or number <= 0:
+                continue
+            values.append(number)
+
+        positive_values = values
+        filtered_values = [
+            value for value in values
+            if (lower is None or value >= lower) and (upper is None or value <= upper)
+        ]
+        min_value = min(positive_values) if positive_values else origem.get("cache", {}).get(ref, 0)
+        median_value = median(filtered_values) if filtered_values else origem.get("cache", {}).get(ref, 0)
+
+        origem["cells"][ref] = (
+            f'=IF(SIMULADOR!$C$6="MÍNIMO",{min_value:.15g},{median_value:.15g})'
+            f'*IF(SIMULADOR!$C${toggle_row}="SIM",1,0)'
+            f'*(1+$E{row})'
+        )
 
 
 def break_origin_circular_rows(model):
