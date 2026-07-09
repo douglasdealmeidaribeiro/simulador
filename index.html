@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Simulador de Modelagem Econômico-Financeira</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <p class="eyebrow">SIMULADOR</p>
+        <h1>Modelagem Econômico-Financeira</h1>
+      </div>
+      <div class="status" id="engineStatus">Carregando motor de cálculo...</div>
+    </header>
+
+    <main class="layout">
+      <section class="results-panel" aria-label="Resultados">
+        <div class="result">
+          <span>Contraprestação anual estimada (simulada)</span>
+          <strong id="annualResult">R$ --</strong>
+          <small>* mil</small>
+        </div>
+        <div class="result">
+          <span>Contraprestação mensal estimada (simulada)</span>
+          <strong id="monthlyResult">R$ --</strong>
+          <small>* mil</small>
+        </div>
+        <button class="primary-button" id="simulateButton" type="button" disabled>Simular</button>
+      </section>
+
+      <section class="grid">
+        <aside class="side-panel">
+          <section class="section">
+            <h2>Geral</h2>
+            <div id="generalFields" class="field-list"></div>
+          </section>
+
+          <section class="section">
+            <h2>Centro de custos</h2>
+            <div id="costCenters" class="toggle-list"></div>
+          </section>
+        </aside>
+
+        <section class="section budget-section">
+          <div class="section-heading">
+            <h2>Orçamento (origem)</h2>
+            <input id="budgetFilter" class="search" type="search" placeholder="Filtrar item ou centro">
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Orçamento (origem)</th>
+                  <th>Centro de custos</th>
+                  <th>Ajuste manual (%)</th>
+                </tr>
+              </thead>
+              <tbody id="budgetRows"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script src="assets/simulador-config.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
