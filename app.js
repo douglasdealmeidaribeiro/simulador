@@ -11,7 +11,7 @@ const annualResult = document.querySelector('#annualResult');
 const monthlyResult = document.querySelector('#monthlyResult');
 const targetResult = document.querySelector('#targetResult');
 const priceResult = document.querySelector('#priceResult');
-const worker = new Worker('worker.js?v=20260710-3');
+const worker = new Worker('worker.js?v=20260710-4');
 
 generateButton.disabled = true;
 

@@ -15,7 +15,6 @@ const SHELTER_SENSITIVE_ITEMS = new Set([
   'REINVESTIMENTOS REPOSIÇÃO DE INFRAESTRUTURA 10 ANOS',
   'REINVESTIMENTOS REPOSIÇÃO DE INFRAESTRUTURA 15 ANOS',
 ]);
-const SHELTER_OFF_PRICE_CORRECTION = 153.84565756943;
 
 function colToNum(col) {
   return [...col].reduce((acc, char) => acc * 26 + char.charCodeAt(0) - 64, 0);
@@ -220,13 +219,6 @@ function goalSeek(goal = 0.1) {
   return { price: mid, iterations, residual: fMid };
 }
 
-function applyExcelCompatibilityPrice(price) {
-  if (!isSim('C15')) {
-    return price - SHELTER_OFF_PRICE_CORRECTION;
-  }
-  return price;
-}
-
 function applyUpdates(updates) {
   for (const [ref, value] of Object.entries(updates)) {
     set(sheetIds.simulador, ref, value);
@@ -258,7 +250,6 @@ self.addEventListener('message', (event) => {
     applyUpdates(event.data.payload.updates);
     set(sheetIds.controle, 'M3', 15000);
     const seek = goalSeek(0.1);
-    set(sheetIds.controle, 'M3', applyExcelCompatibilityPrice(seek.price));
     postMessage({
       type: 'result',
       payload: {
