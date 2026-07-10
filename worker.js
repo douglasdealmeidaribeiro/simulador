@@ -170,6 +170,7 @@ function currentResults() {
   return {
     annual,
     monthly: get(sheetIds.simulador, 'G4'),
+    price: get(sheetIds.controle, 'M3'),
     target: get(sheetIds.controle, 'M13'),
   };
 }

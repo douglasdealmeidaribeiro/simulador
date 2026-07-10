@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Simulador de Modelagem Econômico-Financeira</title>
-    <link rel="stylesheet" href="styles.css?v=20260710-2">
+    <link rel="stylesheet" href="styles.css?v=20260710-3">
   </head>
   <body>
     <header class="app-header">
@@ -19,9 +19,27 @@
       <section class="action-panel" aria-label="Gerar planilha">
         <div>
           <h2>Preencha os dados e gere a planilha calculada</h2>
-          <p>Os cálculos serão executados pelo Excel no servidor, e o arquivo baixado já virá simulado.</p>
+          <p>Os cálculos serão executados no navegador, sem backend, e o arquivo baixado trará os resultados simulados.</p>
+          <div class="result-strip" aria-live="polite">
+            <div>
+              <span>Anual</span>
+              <strong id="annualResult">--</strong>
+            </div>
+            <div>
+              <span>Mensal</span>
+              <strong id="monthlyResult">--</strong>
+            </div>
+            <div>
+              <span>Preço</span>
+              <strong id="priceResult">--</strong>
+            </div>
+            <div>
+              <span>Meta/VPL</span>
+              <strong id="targetResult">--</strong>
+            </div>
+          </div>
         </div>
-        <button class="primary-button" id="generateButton" type="button">Gerar planilha no Excel</button>
+        <button class="primary-button" id="generateButton" type="button">Gerar planilha calculada</button>
       </section>
 
       <section class="grid">
@@ -58,8 +76,7 @@
       </section>
     </main>
 
-    <script src="assets/api-config.js?v=20260710-2"></script>
-    <script src="assets/simulador-config.js?v=20260710-2"></script>
-    <script src="app.js?v=20260710-2"></script>
+    <script src="assets/simulador-config.js?v=20260710-3"></script>
+    <script src="app.js?v=20260710-3"></script>
   </body>
 </html>

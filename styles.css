@@ -104,6 +104,36 @@ h2 {
   font-size: 0.9rem;
 }
 
+.result-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(118px, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.result-strip div {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+
+.result-strip span {
+  display: block;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.result-strip strong {
+  display: block;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
 .primary-button {
   min-width: 156px;
   min-height: 64px;
@@ -264,7 +294,17 @@ td input {
     min-height: 52px;
   }
 
+  .result-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .table-wrap {
     max-height: none;
+  }
+}
+
+@media (max-width: 520px) {
+  .result-strip {
+    grid-template-columns: 1fr;
   }
 }

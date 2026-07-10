@@ -1,65 +1,69 @@
-# Simulador de Modelagem Econômico-Financeira
+# Simulador de Modelagem Economico-Financeira
 
-Aplicação web com formulário baseado na aba `SIMULADOR` da planilha original. Os cálculos são executados pelo Excel em um backend Windows, e o usuário baixa a planilha `.xlsm` já calculada.
+Aplicacao web estatica com formulario baseado na aba `SIMULADOR` da planilha original. Os calculos rodam no proprio navegador com o modelo extraido da planilha, sem backend, sem PowerShell e sem Excel instalado no servidor.
 
 ## Arquitetura
 
-- Frontend: HTML, CSS e JavaScript estáticos, compatíveis com GitHub Pages.
-- Backend recomendado: PowerShell em servidor Windows com Microsoft Excel instalado.
-- Cálculo: o backend abre a planilha, preenche os inputs, executa a macro `SimularESDigital` ou GoalSeek equivalente, salva e devolve o `.xlsm`.
+- Frontend: HTML, CSS e JavaScript estaticos.
+- Hospedagem: compativel com GitHub Pages.
+- Calculo: `worker.js` usa HyperFormula e `assets/workbook-model.js`.
+- Saida: arquivo `.xls` com resumo dos resultados, dados gerais, centros de custo e ajustes informados.
 
-## Frontend
+## Como usar
 
-O endereço da API fica em:
+Abra a pagina publicada no GitHub Pages, preencha os campos e clique em:
 
 ```text
-assets/api-config.js
+Gerar planilha calculada
 ```
 
-Por padrão:
+O navegador executa a simulacao localmente e baixa uma planilha de resultados.
 
-```js
-window.SIMULADOR_API_URL = 'http://127.0.0.1:3000';
-```
+## Publicacao no GitHub Pages
 
-Em produção, altere esse valor para a URL pública HTTPS do backend.
+1. Envie os arquivos para o repositorio.
+2. No GitHub, acesse `Settings > Pages`.
+3. Use `Deploy from branch`.
+4. Selecione a branch `main` e a pasta `/root`.
+5. Aguarde a publicacao.
 
-## Backend local
-
-Requisitos:
-
-- Windows
-- Microsoft Excel instalado
-- Permissão para automação COM do Excel
-- Sessão interativa de usuário logada no Windows; automação COM do Office normalmente falha quando executada como serviço ou sessão não interativa
-
-Execute:
+Comandos usuais:
 
 ```powershell
-powershell.exe -STA -NoProfile -ExecutionPolicy Bypass -File backend\server.ps1
+git add .
+git commit -m "Converte simulador para versao estatica"
+git push origin main
 ```
 
-O `package.json` também mantém `npm run backend` com o mesmo comando, mas em ambientes com restrição de COM prefira executar o PowerShell diretamente. O backend alternativo em Node foi mantido em `npm run backend:node`, porém a automação COM do Excel é mais confiável quando roda diretamente em PowerShell na sessão do usuário.
+## Desenvolvimento local
 
-Se aparecer o erro `80070520`, o Windows bloqueou a criação do `Excel.Application` nessa sessão. Rode o backend em uma sessão Windows interativa com Excel instalado, ou publique atrás de um serviço/reverse proxy que encaminhe para esse processo interativo.
+Por usar Web Worker, prefira abrir por um servidor local:
 
-Teste:
+```powershell
+python -m http.server 8000
+```
+
+Depois acesse:
 
 ```text
-http://127.0.0.1:3000/health
+http://127.0.0.1:8000
 ```
 
-## Publicação
+## Manutencao
 
-1. Publique o frontend no GitHub Pages.
-2. Publique o backend em um servidor Windows com Excel instalado.
-3. Atualize `assets/api-config.js` com a URL pública do backend.
-4. Faça novo commit/push do frontend.
-
-## Manutenção
-
-Se a planilha original mudar, gere novamente os dados do formulário:
+Se a planilha original mudar, gere novamente os dados do modelo:
 
 ```powershell
 python scripts\generate_workbook_model.py
 ```
+
+Depois valide os scripts:
+
+```powershell
+node --check app.js
+node --check worker.js
+```
+
+## Observacao
+
+A versao estatica nao entrega o arquivo `.xlsm` original com macros recalculadas pelo Excel. Ela entrega uma planilha `.xls` de resultados calculados no navegador, adequada para publicacao gratuita no GitHub Pages.

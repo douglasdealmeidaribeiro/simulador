@@ -1,1 +1,2 @@
-window.SIMULADOR_API_URL = 'http://127.0.0.1:3000';
+// Mantido apenas por compatibilidade com versoes antigas.
+// A versao atual do simulador roda 100% no navegador e nao usa backend.

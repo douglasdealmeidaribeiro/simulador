@@ -1,12 +1,29 @@
 const config = window.SIMULADOR_CONFIG;
-const apiBaseUrl = (window.SIMULADOR_API_URL || 'http://127.0.0.1:3000').replace(/\/$/, '');
 
 const state = new Map();
-let apiReady = false;
+let engineReady = false;
+let running = false;
+let lastResults = null;
 
 const engineStatus = document.querySelector('#engineStatus');
 const generateButton = document.querySelector('#generateButton');
+const annualResult = document.querySelector('#annualResult');
+const monthlyResult = document.querySelector('#monthlyResult');
+const targetResult = document.querySelector('#targetResult');
+const priceResult = document.querySelector('#priceResult');
+const worker = new Worker('worker.js?v=20260710-3');
+
 generateButton.disabled = true;
+
+const currencyFormatter = new Intl.NumberFormat('pt-BR', {
+  style: 'currency',
+  currency: 'BRL',
+  maximumFractionDigits: 2,
+});
+
+const decimalFormatter = new Intl.NumberFormat('pt-BR', {
+  maximumFractionDigits: 6,
+});
 
 function normalizeText(value) {
   return String(value || '')
@@ -31,36 +48,12 @@ function setStatus(message, kind = '') {
   engineStatus.className = `status ${kind}`.trim();
 }
 
-function apiUnavailableMessage() {
-  const isLocalApi = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(apiBaseUrl);
-  if (isLocalApi) {
-    return 'Backend do Excel indisponível. Inicie a API em http://127.0.0.1:3000 ou configure uma URL pública HTTPS.';
-  }
-  return `Backend do Excel indisponível em ${apiBaseUrl}. Verifique se a API está online e liberada para este site.`;
-}
-
-async function checkApiHealth() {
-  setStatus('Verificando backend do Excel...');
-  try {
-    const response = await fetch(`${apiBaseUrl}/health`, {
-      cache: 'no-store',
-      headers: { Accept: 'application/json' },
-    });
-
-    if (!response.ok) {
-      throw new Error(apiUnavailableMessage());
-    }
-
-    apiReady = true;
-    generateButton.disabled = false;
-    generateButton.title = '';
-    setStatus('Backend do Excel conectado', 'ready');
-  } catch (_error) {
-    apiReady = false;
-    generateButton.disabled = true;
-    generateButton.title = apiUnavailableMessage();
-    setStatus(apiUnavailableMessage(), 'error');
-  }
+function updateResults(results) {
+  lastResults = results;
+  annualResult.textContent = currencyFormatter.format(results.annual || 0);
+  monthlyResult.textContent = currencyFormatter.format(results.monthly || 0);
+  targetResult.textContent = decimalFormatter.format(results.target || 0);
+  priceResult.textContent = currencyFormatter.format(results.price || 0);
 }
 
 function updateState(cell, value) {
@@ -152,10 +145,82 @@ function applyFilter() {
   }
 }
 
-function filenameFromResponse(response) {
-  const disposition = response.headers.get('content-disposition') || '';
-  const match = disposition.match(/filename="?([^"]+)"?/i);
-  return match ? match[1] : 'simulador-modelagem-calculado.xlsm';
+function xmlEscape(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function cell(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return `<Cell><Data ss:Type="Number">${value}</Data></Cell>`;
+  }
+  return `<Cell><Data ss:Type="String">${xmlEscape(value)}</Data></Cell>`;
+}
+
+function row(values) {
+  return `<Row>${values.map(cell).join('')}</Row>`;
+}
+
+function worksheet(name, rows) {
+  return [
+    `<Worksheet ss:Name="${xmlEscape(name.slice(0, 31))}">`,
+    '<Table>',
+    rows.map(row).join(''),
+    '</Table>',
+    '</Worksheet>',
+  ].join('');
+}
+
+function currentStateValue(cellRef) {
+  return state.has(cellRef) ? state.get(cellRef) : '';
+}
+
+function buildWorkbookXml(results) {
+  const now = new Date();
+  const resumo = [
+    ['Simulador de Modelagem Econômico-Financeira'],
+    ['Arquivo gerado no navegador', now.toLocaleString('pt-BR')],
+    ['Origem do modelo', config.source],
+    [],
+    ['Indicador', 'Valor'],
+    ['Contraprestação anual calculada', results.annual],
+    ['Contraprestação mensal calculada', results.monthly],
+    ['Preço usado no motor local', results.price],
+    ['Meta/VPL de controle', results.target],
+  ];
+
+  const gerais = [
+    ['Campo', 'Célula', 'Valor informado'],
+    ...config.general.map((item) => [item.label, item.cell, currentStateValue(item.cell)]),
+  ];
+
+  const centros = [
+    ['Centro de custos', 'Célula', 'Incluído'],
+    ...config.costCenters.map((item) => [item.label, item.cell, currentStateValue(item.cell)]),
+  ];
+
+  const orcamento = [
+    ['Orçamento de origem', 'Centro de custos', 'Célula', 'Ajuste manual'],
+    ...config.budget.map((item) => [item.item, item.center, item.cell, currentStateValue(item.cell)]),
+  ];
+
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<?mso-application progid="Excel.Sheet"?>',
+    '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"',
+    ' xmlns:o="urn:schemas-microsoft-com:office:office"',
+    ' xmlns:x="urn:schemas-microsoft-com:office:excel"',
+    ' xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"',
+    ' xmlns:html="http://www.w3.org/TR/REC-html40">',
+    worksheet('Resumo', resumo),
+    worksheet('Geral', gerais),
+    worksheet('Centros de custo', centros),
+    worksheet('Ajustes orcamento', orcamento),
+    '</Workbook>',
+  ].join('');
 }
 
 function downloadBlob(blob, filename) {
@@ -169,50 +234,68 @@ function downloadBlob(blob, filename) {
   URL.revokeObjectURL(url);
 }
 
-async function generateWorkbook() {
-  if (!apiReady) {
-    setStatus(apiUnavailableMessage(), 'error');
+function downloadWorkbook(results) {
+  const xml = buildWorkbookXml(results);
+  const blob = new Blob([xml], { type: 'application/vnd.ms-excel;charset=utf-8' });
+  const stamp = new Date().toISOString().slice(0, 10);
+  downloadBlob(blob, `simulador-modelagem-calculado-${stamp}.xls`);
+}
+
+function setRunning(value) {
+  running = value;
+  generateButton.disabled = !engineReady || running;
+}
+
+function generateWorkbook() {
+  if (!engineReady) {
+    setStatus('Motor de cálculo ainda está carregando...', 'error');
     return;
   }
 
-  generateButton.disabled = true;
-  setStatus('Enviando para o Excel no servidor...');
-
-  try {
-    const response = await fetch(`${apiBaseUrl}/api/simular`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ updates: Object.fromEntries(state) }),
-    });
-
-    if (!response.ok) {
-      let message = 'Não foi possível gerar a planilha calculada.';
-      try {
-        const payload = await response.json();
-        message = payload.error || message;
-      } catch (_error) {
-        message = await response.text() || message;
-      }
-      throw new Error(message);
-    }
-
-    const blob = await response.blob();
-    downloadBlob(blob, filenameFromResponse(response));
-    setStatus('Planilha calculada pelo Excel gerada', 'ready');
-  } catch (error) {
-    const message = error instanceof TypeError && /fetch/i.test(error.message)
-      ? apiUnavailableMessage()
-      : (error.message || 'Erro ao gerar a planilha.');
-    apiReady = false;
-    setStatus(message, 'error');
-  } finally {
-    generateButton.disabled = !apiReady;
-  }
+  setRunning(true);
+  setStatus('Calculando no navegador...');
+  worker.postMessage({
+    type: 'simulate',
+    payload: {
+      updates: Object.fromEntries(state),
+    },
+  });
 }
+
+worker.addEventListener('message', (event) => {
+  const { type, payload } = event.data;
+  if (type === 'progress') {
+    setStatus(payload.message);
+    return;
+  }
+  if (type === 'ready') {
+    engineReady = true;
+    updateResults(payload.results);
+    setRunning(false);
+    setStatus('Motor local pronto. Não há backend ou servidor Excel.', 'ready');
+    return;
+  }
+  if (type === 'result') {
+    updateResults(payload.results);
+    downloadWorkbook(payload.results);
+    setRunning(false);
+    setStatus('Planilha de resultados gerada no navegador.', 'ready');
+    return;
+  }
+  if (type === 'error') {
+    setRunning(false);
+    setStatus(payload.message || 'Erro ao simular.', 'error');
+  }
+});
+
+worker.addEventListener('error', () => {
+  engineReady = false;
+  setRunning(false);
+  setStatus('Não foi possível carregar o motor local. Publique em um servidor estático ou abra via localhost.', 'error');
+});
 
 renderGeneral();
 renderCostCenters();
 renderBudget();
-checkApiHealth();
 document.querySelector('#budgetFilter').addEventListener('input', applyFilter);
 generateButton.addEventListener('click', generateWorkbook);
