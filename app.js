@@ -1,38 +1,16 @@
 const config = window.SIMULADOR_CONFIG;
+const apiBaseUrl = (window.SIMULADOR_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
 const state = new Map();
-let worker;
-let engineReady = false;
 
-const annualResult = document.querySelector('#annualResult');
-const monthlyResult = document.querySelector('#monthlyResult');
 const engineStatus = document.querySelector('#engineStatus');
-const simulateButton = document.querySelector('#simulateButton');
-const downloadButton = document.querySelector('#downloadButton');
-
-let lastResults = config.results;
-let isDirty = false;
-let pendingDownload = false;
-
-const currencyFormatter = new Intl.NumberFormat('pt-BR', {
-  style: 'currency',
-  currency: 'BRL',
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
+const generateButton = document.querySelector('#generateButton');
 
 function normalizeText(value) {
   return String(value || '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
-}
-
-function formatMoney(value) {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return 'R$ --';
-  }
-  return currencyFormatter.format(value);
 }
 
 function formatPercentInput(value) {
@@ -51,15 +29,8 @@ function setStatus(message, kind = '') {
   engineStatus.className = `status ${kind}`.trim();
 }
 
-function renderResults(results) {
-  lastResults = results;
-  annualResult.textContent = formatMoney(results.annual);
-  monthlyResult.textContent = formatMoney(results.monthly);
-}
-
 function updateState(cell, value) {
   state.set(cell, value);
-  isDirty = true;
 }
 
 function createSelect(options, value, onChange) {
@@ -147,206 +118,10 @@ function applyFilter() {
   }
 }
 
-function startWorker() {
-  worker = new Worker('worker.js');
-
-  worker.addEventListener('message', (event) => {
-    const { type, payload } = event.data;
-
-    if (type === 'ready') {
-      engineReady = true;
-      simulateButton.disabled = false;
-      downloadButton.disabled = false;
-      setStatus('Motor pronto', 'ready');
-      renderResults(payload.results);
-      isDirty = false;
-    }
-
-    if (type === 'progress') {
-      setStatus(payload.message);
-    }
-
-    if (type === 'result') {
-      simulateButton.disabled = false;
-      downloadButton.disabled = false;
-      setStatus(`Simulação concluída em ${payload.iterations} iterações`, 'ready');
-      renderResults(payload.results);
-      isDirty = false;
-      if (pendingDownload) {
-        pendingDownload = false;
-        downloadSimulatedWorkbook();
-      }
-    }
-
-    if (type === 'error') {
-      simulateButton.disabled = false;
-      downloadButton.disabled = false;
-      pendingDownload = false;
-      setStatus(payload.message, 'error');
-    }
-  });
-}
-
-function simulate(downloadAfter = false) {
-  if (!engineReady) {
-    return;
-  }
-  pendingDownload = downloadAfter;
-  simulateButton.disabled = true;
-  downloadButton.disabled = true;
-  setStatus('Simulando...');
-  worker.postMessage({
-    type: 'simulate',
-    payload: {
-      updates: Object.fromEntries(state),
-    },
-  });
-}
-
-function parseXml(xml) {
-  const doc = new DOMParser().parseFromString(xml, 'application/xml');
-  const error = doc.querySelector('parsererror');
-  if (error) {
-    throw new Error('Não foi possível ler a estrutura XML da planilha.');
-  }
-  return doc;
-}
-
-function serializeXml(doc) {
-  return new XMLSerializer().serializeToString(doc);
-}
-
-function columnNumber(ref) {
-  const match = ref.match(/^([A-Z]+)/);
-  return [...match[1]].reduce((acc, char) => acc * 26 + char.charCodeAt(0) - 64, 0);
-}
-
-function rowNumber(ref) {
-  return Number(ref.match(/\d+$/)[0]);
-}
-
-function ensureRow(doc, rowIndex) {
-  const rows = [...doc.getElementsByTagName('row')];
-  const existing = rows.find((row) => Number(row.getAttribute('r')) === rowIndex);
-  if (existing) {
-    return existing;
-  }
-
-  const sheetData = doc.getElementsByTagName('sheetData')[0];
-  const row = doc.createElementNS('http://schemas.openxmlformats.org/spreadsheetml/2006/main', 'row');
-  row.setAttribute('r', String(rowIndex));
-
-  const nextRow = rows.find((candidate) => Number(candidate.getAttribute('r')) > rowIndex);
-  sheetData.insertBefore(row, nextRow || null);
-  return row;
-}
-
-function ensureCell(doc, ref) {
-  const cells = [...doc.getElementsByTagName('c')];
-  const existing = cells.find((cell) => cell.getAttribute('r') === ref);
-  if (existing) {
-    return existing;
-  }
-
-  const row = ensureRow(doc, rowNumber(ref));
-  const cell = doc.createElementNS('http://schemas.openxmlformats.org/spreadsheetml/2006/main', 'c');
-  cell.setAttribute('r', ref);
-
-  const targetCol = columnNumber(ref);
-  const rowCells = [...row.getElementsByTagName('c')];
-  const nextCell = rowCells.find((candidate) => columnNumber(candidate.getAttribute('r')) > targetCol);
-  row.insertBefore(cell, nextCell || null);
-  return cell;
-}
-
-function removeChildren(cell, names) {
-  for (const name of names) {
-    for (const child of [...cell.getElementsByTagName(name)]) {
-      if (child.parentNode === cell) {
-        cell.removeChild(child);
-      }
-    }
-  }
-}
-
-function setCell(doc, ref, value, options = {}) {
-  const cell = ensureCell(doc, ref);
-  const preserveFormula = Boolean(options.preserveFormula);
-  const hasFormula = [...cell.getElementsByTagName('f')].some((child) => child.parentNode === cell);
-
-  if (!preserveFormula || !hasFormula) {
-    removeChildren(cell, ['f', 'v', 'is']);
-  } else {
-    removeChildren(cell, ['v']);
-  }
-
-  if (typeof value === 'string') {
-    cell.setAttribute('t', 'inlineStr');
-    const inline = doc.createElementNS('http://schemas.openxmlformats.org/spreadsheetml/2006/main', 'is');
-    const text = doc.createElementNS('http://schemas.openxmlformats.org/spreadsheetml/2006/main', 't');
-    text.textContent = value;
-    inline.append(text);
-    cell.append(inline);
-    return;
-  }
-
-  cell.removeAttribute('t');
-  const number = doc.createElementNS('http://schemas.openxmlformats.org/spreadsheetml/2006/main', 'v');
-  number.textContent = String(Number(value || 0));
-  cell.append(number);
-}
-
-function normalizeWorkbookTarget(target) {
-  return `xl/${target}`.replace(/\/+/g, '/');
-}
-
-async function workbookSheetPaths(zip) {
-  const workbookXml = await zip.file('xl/workbook.xml').async('string');
-  const relsXml = await zip.file('xl/_rels/workbook.xml.rels').async('string');
-  const workbookDoc = parseXml(workbookXml);
-  const relsDoc = parseXml(relsXml);
-
-  const rels = new Map(
-    [...relsDoc.getElementsByTagName('Relationship')].map((rel) => [
-      rel.getAttribute('Id'),
-      normalizeWorkbookTarget(rel.getAttribute('Target')),
-    ]),
-  );
-
-  const paths = new Map();
-  for (const sheet of workbookDoc.getElementsByTagName('sheet')) {
-    const relId = sheet.getAttribute('r:id') || sheet.getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
-    paths.set(sheet.getAttribute('name'), rels.get(relId));
-  }
-  return { workbookDoc, paths };
-}
-
-async function updateWorksheet(zip, path, updates) {
-  const file = zip.file(path);
-  if (!file) {
-    throw new Error(`A aba ${path} não foi encontrada na planilha.`);
-  }
-  const doc = parseXml(await file.async('string'));
-  for (const update of updates) {
-    setCell(doc, update.ref, update.value, update.options);
-  }
-  zip.file(path, serializeXml(doc));
-}
-
-function setFullRecalculation(workbookDoc) {
-  const workbook = workbookDoc.documentElement;
-  let calcPr = workbookDoc.getElementsByTagName('calcPr')[0];
-  if (!calcPr) {
-    calcPr = workbookDoc.createElementNS('http://schemas.openxmlformats.org/spreadsheetml/2006/main', 'calcPr');
-    workbook.append(calcPr);
-  }
-  calcPr.setAttribute('calcMode', 'auto');
-  calcPr.setAttribute('fullCalcOnLoad', '1');
-  calcPr.setAttribute('forceFullCalc', '1');
-}
-
-function workbookInputs() {
-  return [...state.entries()].map(([ref, value]) => ({ ref, value }));
+function filenameFromResponse(response) {
+  const disposition = response.headers.get('content-disposition') || '';
+  const match = disposition.match(/filename="?([^"]+)"?/i);
+  return match ? match[1] : 'simulador-modelagem-calculado.xlsm';
 }
 
 function downloadBlob(blob, filename) {
@@ -360,67 +135,41 @@ function downloadBlob(blob, filename) {
   URL.revokeObjectURL(url);
 }
 
-async function downloadSimulatedWorkbook() {
-  try {
-    simulateButton.disabled = true;
-    downloadButton.disabled = true;
-    setStatus('Gerando planilha...');
+async function generateWorkbook() {
+  generateButton.disabled = true;
+  setStatus('Enviando para o Excel no servidor...');
 
-    const response = await fetch(config.source);
+  try {
+    const response = await fetch(`${apiBaseUrl}/api/simular`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ updates: Object.fromEntries(state) }),
+    });
+
     if (!response.ok) {
-      throw new Error('Não foi possível carregar a planilha original.');
+      let message = 'Não foi possível gerar a planilha calculada.';
+      try {
+        const payload = await response.json();
+        message = payload.error || message;
+      } catch (_error) {
+        message = await response.text() || message;
+      }
+      throw new Error(message);
     }
 
-    const zip = await JSZip.loadAsync(await response.arrayBuffer());
-    const { workbookDoc, paths } = await workbookSheetPaths(zip);
-    const simuladorPath = paths.get('SIMULADOR');
-    const controlePath = paths.get('Controle');
-
-    await updateWorksheet(zip, simuladorPath, [
-      ...workbookInputs(),
-      { ref: 'G3', value: lastResults.annual, options: { preserveFormula: true } },
-      { ref: 'G4', value: lastResults.monthly, options: { preserveFormula: true } },
-    ]);
-    await updateWorksheet(zip, controlePath, [
-      { ref: 'M3', value: lastResults.annual },
-      { ref: 'M13', value: 0.1, options: { preserveFormula: true } },
-    ]);
-
-    setFullRecalculation(workbookDoc);
-    zip.file('xl/workbook.xml', serializeXml(workbookDoc));
-
-    const blob = await zip.generateAsync({
-      type: 'blob',
-      mimeType: 'application/vnd.ms-excel.sheet.macroEnabled.12',
-      compression: 'DEFLATE',
-    });
-    downloadBlob(blob, 'simulador-modelagem-simulado.xlsm');
-    setStatus('Planilha simulada gerada', 'ready');
+    const blob = await response.blob();
+    downloadBlob(blob, filenameFromResponse(response));
+    setStatus('Planilha calculada pelo Excel gerada', 'ready');
   } catch (error) {
     setStatus(error.message || 'Erro ao gerar a planilha.', 'error');
   } finally {
-    simulateButton.disabled = false;
-    downloadButton.disabled = false;
+    generateButton.disabled = false;
   }
 }
 
-function requestWorkbookDownload() {
-  if (!engineReady) {
-    return;
-  }
-  if (isDirty) {
-    simulate(true);
-    return;
-  }
-  downloadSimulatedWorkbook();
-}
-
-renderResults(config.results);
 renderGeneral();
 renderCostCenters();
 renderBudget();
-isDirty = false;
+setStatus('Pronto para gerar no Excel', 'ready');
 document.querySelector('#budgetFilter').addEventListener('input', applyFilter);
-simulateButton.addEventListener('click', () => simulate());
-downloadButton.addEventListener('click', requestWorkbookDownload);
-startWorker();
+generateButton.addEventListener('click', generateWorkbook);

@@ -12,23 +12,16 @@
         <p class="eyebrow">SIMULADOR</p>
         <h1>Modelagem Econômico-Financeira</h1>
       </div>
-      <div class="status" id="engineStatus">Carregando motor de cálculo...</div>
+      <div class="status" id="engineStatus">Carregando formulário...</div>
     </header>
 
     <main class="layout">
-      <section class="results-panel" aria-label="Resultados">
-        <div class="result">
-          <span>Contraprestação anual estimada (simulada)</span>
-          <strong id="annualResult">R$ --</strong>
-          <small>* mil</small>
+      <section class="action-panel" aria-label="Gerar planilha">
+        <div>
+          <h2>Preencha os dados e gere a planilha calculada</h2>
+          <p>Os cálculos serão executados pelo Excel no servidor, e o arquivo baixado já virá simulado.</p>
         </div>
-        <div class="result">
-          <span>Contraprestação mensal estimada (simulada)</span>
-          <strong id="monthlyResult">R$ --</strong>
-          <small>* mil</small>
-        </div>
-        <button class="primary-button" id="simulateButton" type="button" disabled>Simular</button>
-        <button class="secondary-button" id="downloadButton" type="button" disabled>Baixar planilha</button>
+        <button class="primary-button" id="generateButton" type="button">Gerar planilha no Excel</button>
       </section>
 
       <section class="grid">
@@ -65,8 +58,8 @@
       </section>
     </main>
 
+    <script src="assets/api-config.js"></script>
     <script src="assets/simulador-config.js"></script>
-    <script src="assets/vendor/jszip.min.js"></script>
     <script src="app.js"></script>
   </body>
 </html>
