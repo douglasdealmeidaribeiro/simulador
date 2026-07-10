@@ -86,7 +86,7 @@ h2 {
 
 .results-panel {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto;
   gap: 12px;
   align-items: stretch;
   margin-bottom: 16px;
@@ -118,18 +118,29 @@ h2 {
   color: var(--muted);
 }
 
-.primary-button {
+.primary-button,
+.secondary-button {
   min-width: 156px;
   border: 0;
   border-radius: 8px;
-  background: var(--accent);
-  color: #fff;
   font-weight: 800;
   cursor: pointer;
   box-shadow: var(--shadow);
 }
 
-.primary-button:disabled {
+.primary-button {
+  background: var(--accent);
+  color: #fff;
+}
+
+.secondary-button {
+  border: 1px solid var(--accent);
+  background: var(--surface);
+  color: var(--accent);
+}
+
+.primary-button:disabled,
+.secondary-button:disabled {
   cursor: wait;
   opacity: 0.58;
 }
@@ -270,7 +281,8 @@ td input {
     display: grid;
   }
 
-  .primary-button {
+  .primary-button,
+  .secondary-button {
     min-height: 52px;
   }
 

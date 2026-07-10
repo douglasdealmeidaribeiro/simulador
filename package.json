@@ -1,5 +1,6 @@
 {
   "dependencies": {
-    "hyperformula": "^3.3.0"
+    "hyperformula": "^3.3.0",
+    "jszip": "^3.10.1"
   }
 }
