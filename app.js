@@ -5,7 +5,6 @@ const state = new Map();
 let engineReady = false;
 let running = false;
 let lastResults = null;
-let pendingExactExport = false;
 
 const engineStatus = document.querySelector('#engineStatus');
 const generateButton = document.querySelector('#generateButton');
@@ -13,9 +12,7 @@ const annualResult = document.querySelector('#annualResult');
 const monthlyResult = document.querySelector('#monthlyResult');
 const targetResult = document.querySelector('#targetResult');
 const priceResult = document.querySelector('#priceResult');
-const worker = new Worker('worker.js?v=20260710-7');
 const backendBaseUrl = String(apiConfig.baseUrl || '').replace(/\/+$/, '');
-const preferExcelBackend = apiConfig.preferExcelBackend !== false;
 
 generateButton.disabled = true;
 
@@ -122,6 +119,28 @@ async function generateWithBackend(updates) {
 
     downloadBlob(blob, filename);
     setStatus('Planilha Orçamento (Mensal) gerada no Excel com dados pós-simulação.', 'ready');
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function checkBackendHealth() {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+
+  try {
+    const response = await fetch(apiUrl('/health'), {
+      method: 'GET',
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`Health check falhou (${response.status}).`);
+    }
+    const payload = await response.json();
+    if (!payload?.ok) {
+      throw new Error('Backend retornou resposta invalida.');
+    }
   } finally {
     clearTimeout(timeout);
   }
@@ -267,7 +286,7 @@ function buildWorkbookXml(results) {
     ['Indicador', 'Valor'],
     ['Contraprestação anual calculada', results.annual],
     ['Contraprestação mensal calculada', results.monthly],
-    ['Preço usado no motor local', results.price],
+    ['Preço usado na simulação', results.price],
     ['Meta/VPL de controle', results.target],
   ];
 
@@ -313,13 +332,6 @@ function downloadBlob(blob, filename) {
   URL.revokeObjectURL(url);
 }
 
-function downloadWorkbook(results) {
-  const xml = buildWorkbookXml(results);
-  const blob = new Blob([xml], { type: 'application/vnd.ms-excel;charset=utf-8' });
-  const stamp = new Date().toISOString().slice(0, 10);
-  downloadBlob(blob, `simulador-modelagem-calculado-${stamp}.xls`);
-}
-
 function setRunning(value) {
   running = value;
   generateButton.disabled = !engineReady || running;
@@ -327,89 +339,45 @@ function setRunning(value) {
 
 async function generateWorkbook() {
   if (!engineReady) {
-    setStatus('Motor de cálculo ainda está carregando...', 'error');
+    setStatus('Backend Excel indisponível. Inicie a API exata para simular.', 'error');
     return;
   }
 
   setRunning(true);
   const updates = Object.fromEntries(state);
 
-  if (preferExcelBackend) {
-    setStatus('Calculando e gerando Orçamento (Mensal) no Excel (backend)...');
-    try {
-      await generateWithBackend(updates);
-      setRunning(false);
-      return;
-    } catch (error) {
-      setStatus(`Backend indisponível (${error.message || 'erro desconhecido'}). Calculando localmente e tentando exportar no final...`, 'error');
-    }
+  setStatus('Gerando Orçamento (Mensal) no Excel...');
+  try {
+    await generateWithBackend(updates);
+  } catch (error) {
+    setStatus(`Falha ao gerar planilha exata (${error.message || 'erro desconhecido'}).`, 'error');
+  } finally {
+    setRunning(false);
   }
-
-  pendingExactExport = false;
-  setStatus('Calculando no navegador...');
-  worker.postMessage({
-    type: 'simulate',
-    payload: { updates },
-  });
 }
 
-worker.addEventListener('message', (event) => {
-  const { type, payload } = event.data;
-  if (type === 'progress') {
-    setStatus(payload.message);
-    return;
-  }
-  if (type === 'ready') {
+async function initBackendMode() {
+  setStatus('Verificando backend Excel...');
+  try {
+    await checkBackendHealth();
     engineReady = true;
-    updateResults(payload.results);
     setRunning(false);
-    setStatus(preferExcelBackend
-      ? 'Motor local pronto. O app tentará backend Excel primeiro e fará fallback local.'
-      : 'Motor local pronto. Exportação local habilitada.', 'ready');
-    return;
-  }
-  if (type === 'result') {
-    updateResults(payload.results);
-    if (!preferExcelBackend) {
-      downloadWorkbook(payload.results);
-      setRunning(false);
-      setStatus('Planilha de resultados gerada no navegador.', 'ready');
+    setStatus('Backend Excel pronto. A simulação usa somente o resultado exato.', 'ready');
+  } catch (error) {
+    engineReady = false;
+    setRunning(false);
+    const detail = error?.message || 'backend indisponível';
+    if (!backendBaseUrl) {
+      setStatus(`Backend não encontrado (${detail}). Configure a API pública para usar a simulação exata.`, 'error');
       return;
     }
-
-    if (!pendingExactExport) {
-      setRunning(false);
-      setStatus('Simulação local concluída.', 'ready');
-      return;
-    }
-
-    setStatus('Prévia local concluída. Gerando planilha Orçamento (Mensal) exata via backend...');
-    generateWithBackend(Object.fromEntries(state))
-      .then(() => {
-        pendingExactExport = false;
-        setRunning(false);
-      })
-      .catch((error) => {
-        pendingExactExport = false;
-        setRunning(false);
-        setStatus(`Não foi possível exportar a planilha mensal exata (${error.message || 'erro desconhecido'}).`, 'error');
-      });
-    return;
+    setStatus(`Backend não encontrado em ${backendBaseUrl} (${detail}).`, 'error');
   }
-  if (type === 'error') {
-    setRunning(false);
-    setStatus(payload.message || 'Erro ao simular.', 'error');
-  }
-});
-
-worker.addEventListener('error', () => {
-  engineReady = false;
-  setRunning(false);
-  setStatus('Não foi possível carregar o motor local. Publique em um servidor estático ou abra via localhost.', 'error');
-});
+}
 
 renderGeneral();
 renderCostCenters();
 renderBudget();
 document.querySelector('#budgetFilter').addEventListener('input', applyFilter);
 generateButton.addEventListener('click', generateWorkbook);
+initBackendMode();

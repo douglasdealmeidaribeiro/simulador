@@ -1,13 +1,13 @@
 # Simulador de Modelagem Economico-Financeira
 
-Aplicacao web com formulario baseado na aba `SIMULADOR` da planilha original. O calculo roda no navegador (modo gratuito) e gera arquivo de resultados localmente.
+Aplicacao web com formulario baseado na aba `SIMULADOR` da planilha original. A simulacao usa exclusivamente o backend com Excel para evitar divergencias do calculo no navegador.
 
 ## Arquitetura
 
 - Frontend: HTML, CSS e JavaScript estaticos.
-- Calculo: `worker.js` usa HyperFormula e `assets/workbook-model.js`.
-- Saida: arquivo `.xls` de resultados gerado no navegador.
-- Opcional avancado: backend Excel (`backend/server.js`) para cenarios de alta aderencia.
+- Frontend: HTML, CSS e JavaScript estaticos.
+- Backend exato: `backend/server.js` chama `backend/simulate-excel.ps1` no Excel.
+- Saida final: arquivo `.xlsx` da aba `Orçamento (Mensal)` atualizado com as premissas da simulacao.
 
 ## Como usar
 
@@ -17,15 +17,15 @@ Abra a pagina, preencha os campos e clique em:
 Gerar planilha calculada
 ```
 
-O app devolve uma planilha `.xls` com resultados simulados.
+O app devolve uma planilha `.xlsx` gerada no Excel contendo a aba `Orçamento (Mensal)` atualizada.
 
 ## Execucao
 
-Abra o frontend e use normalmente. O backend nao e necessario no modo gratuito.
+O backend Excel e obrigatorio para executar a simulacao.
 
 ## Producao no GitHub Pages
 
-Modo recomendado para custo zero: publicar somente o frontend no GitHub Pages.
+O frontend pode ser publicado no GitHub Pages, mas a simulacao depende do backend Excel acessivel pela internet.
 
 ### 1) Publicar frontend no Pages
 
@@ -40,9 +40,45 @@ Passos:
 3. Em `Build and deployment`, selecione `GitHub Actions`.
 4. Aguarde o workflow `Deploy GitHub Pages` concluir.
 
-### 2) (Opcional) Backend Excel
+### 2) Modo gratis com resultado exato no proprio PC
 
-Se no futuro voce quiser maior aderencia ao Excel, pode habilitar backend depois em `assets/api-config.js`.
+Se voce quer manter custo mensal zero e ainda usar o Excel real para gerar o arquivo final, rode a API no seu proprio computador e exponha via Cloudflare Tunnel.
+
+Guia completo:
+
+- [docs/cloudflare-self-hosted-exact-mode.md](docs/cloudflare-self-hosted-exact-mode.md)
+
+Arquivos auxiliares incluidos:
+
+- [scripts/start-selfhosted-exact-mode.ps1](scripts/start-selfhosted-exact-mode.ps1)
+- [scripts/set-selfhosted-backend-mode.ps1](scripts/set-selfhosted-backend-mode.ps1)
+- [cloudflare/config.example.yml](cloudflare/config.example.yml)
+
+Fluxo resumido:
+
+1. Coloque o DNS do dominio na Cloudflare.
+2. Instale `cloudflared` no Windows.
+3. Crie um tunnel nomeado para `api.seudominio.com`.
+4. Rode `scripts/set-selfhosted-backend-mode.ps1` para apontar o frontend para a URL publica da API.
+5. Rode `scripts/start-selfhosted-exact-mode.ps1` para subir backend + tunnel no seu PC.
+
+Exemplo de configuracao do frontend:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\set-selfhosted-backend-mode.ps1 -PublicApiUrl https://api.seudominio.com
+```
+
+Exemplo para subir backend + tunnel:
+
+```powershell
+npm run exact:selfhosted:start -- -TunnelName simulador-api -PublicHostname api.seudominio.com -FrontendOrigin https://SEU_USUARIO.github.io
+```
+
+Para desabilitar o apontamento para API publica e voltar para configuracao vazia:
+
+```powershell
+npm run exact:selfhosted:disable
+```
 
 Comandos usuais:
 
@@ -83,4 +119,4 @@ node --check worker.js
 
 ## Observacao
 
-No modo gratuito/local pode haver diferencas em alguns cenarios em relacao ao Excel original.
+Sem backend Excel ativo, a aplicacao nao executa simulacao.

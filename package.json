@@ -1,7 +1,9 @@
 {
   "scripts": {
     "backend": "powershell.exe -STA -NoProfile -ExecutionPolicy Bypass -File backend/server.ps1",
-    "backend:node": "node backend/server.js"
+    "backend:node": "node backend/server.js",
+    "exact:selfhosted:start": "powershell.exe -ExecutionPolicy Bypass -File scripts/start-selfhosted-exact-mode.ps1",
+    "exact:selfhosted:disable": "powershell.exe -ExecutionPolicy Bypass -File scripts/set-selfhosted-backend-mode.ps1 -Disable"
   },
   "dependencies": {}
 }
