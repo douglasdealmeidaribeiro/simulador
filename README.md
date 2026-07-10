@@ -51,7 +51,11 @@ Guia completo:
 Arquivos auxiliares incluidos:
 
 - [scripts/start-selfhosted-exact-mode.ps1](scripts/start-selfhosted-exact-mode.ps1)
+- [scripts/start-selfhosted-exact-background.ps1](scripts/start-selfhosted-exact-background.ps1)
+- [scripts/stop-selfhosted-exact-background.ps1](scripts/stop-selfhosted-exact-background.ps1)
 - [scripts/set-selfhosted-backend-mode.ps1](scripts/set-selfhosted-backend-mode.ps1)
+- [scripts/install-selfhosted-startup-task.ps1](scripts/install-selfhosted-startup-task.ps1)
+- [scripts/uninstall-selfhosted-startup-task.ps1](scripts/uninstall-selfhosted-startup-task.ps1)
 - [cloudflare/config.example.yml](cloudflare/config.example.yml)
 
 Fluxo resumido:

@@ -3,7 +3,11 @@
     "backend": "powershell.exe -STA -NoProfile -ExecutionPolicy Bypass -File backend/server.ps1",
     "backend:node": "node backend/server.js",
     "exact:selfhosted:start": "powershell.exe -ExecutionPolicy Bypass -File scripts/start-selfhosted-exact-mode.ps1",
-    "exact:selfhosted:disable": "powershell.exe -ExecutionPolicy Bypass -File scripts/set-selfhosted-backend-mode.ps1 -Disable"
+    "exact:selfhosted:disable": "powershell.exe -ExecutionPolicy Bypass -File scripts/set-selfhosted-backend-mode.ps1 -Disable",
+    "exact:selfhosted:bg:start": "powershell.exe -ExecutionPolicy Bypass -File scripts/start-selfhosted-exact-background.ps1",
+    "exact:selfhosted:bg:stop": "powershell.exe -ExecutionPolicy Bypass -File scripts/stop-selfhosted-exact-background.ps1",
+    "exact:selfhosted:task:install": "powershell.exe -ExecutionPolicy Bypass -File scripts/install-selfhosted-startup-task.ps1",
+    "exact:selfhosted:task:uninstall": "powershell.exe -ExecutionPolicy Bypass -File scripts/uninstall-selfhosted-startup-task.ps1"
   },
   "dependencies": {}
 }

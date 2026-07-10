@@ -156,6 +156,37 @@ O script:
 2. inicia `cloudflared tunnel run`
 3. mostra instrucoes de parada
 
+## Rodar em segundo plano (sem janela aberta)
+
+Para iniciar em segundo plano:
+
+```powershell
+npm run exact:selfhosted:bg:start
+```
+
+Para parar os processos de segundo plano:
+
+```powershell
+npm run exact:selfhosted:bg:stop
+```
+
+## Iniciar automaticamente com o Windows (Task Scheduler + fallback sem admin)
+
+Instalar tarefa de inicializacao no logon do seu usuario:
+
+```powershell
+npm run exact:selfhosted:task:install
+```
+
+Remover tarefa de inicializacao:
+
+```powershell
+npm run exact:selfhosted:task:uninstall
+```
+
+Observacao: a tarefa inicia no logon do usuario atual (modo interativo), que e o modo mais compativel para automacao do Excel COM.
+Se o Windows negar permissao para criar Scheduled Task, o script cria automaticamente um fallback em `HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run` com o mesmo comando de inicializacao.
+
 ## Etapa 9 - Teste fim a fim
 
 1. Abra `https://api.seudominio.com/health`
