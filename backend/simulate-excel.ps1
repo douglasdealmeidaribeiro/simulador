@@ -137,7 +137,7 @@ try {
 
   $excel.CalculateFullRebuild()
 
-  $orcamentoMensal = Get-WorksheetLike -Workbook $workbook -Pattern 'orcamento (mensal)'
+  $orcamentoMensal = Get-WorksheetLike -Workbook $workbook -Pattern '(mensal)'
   $orcamentoMensal.Copy()
   $mensalWorkbook = Invoke-WithRetry { $excel.ActiveWorkbook }
   $mensalSheet = Invoke-WithRetry { $mensalWorkbook.Worksheets.Item(1) }
