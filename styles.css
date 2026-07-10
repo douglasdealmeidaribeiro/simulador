@@ -61,13 +61,14 @@ h2 {
 }
 
 .status {
-  min-width: 230px;
+  width: min(420px, 100%);
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
   color: var(--muted);
   text-align: center;
+  line-height: 1.35;
   box-shadow: var(--shadow);
 }
 

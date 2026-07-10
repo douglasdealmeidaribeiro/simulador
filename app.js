@@ -1,5 +1,5 @@
 const config = window.SIMULADOR_CONFIG;
-const apiBaseUrl = (window.SIMULADOR_API_URL || 'http://localhost:3000').replace(/\/$/, '');
+const apiBaseUrl = (window.SIMULADOR_API_URL || 'http://127.0.0.1:3000').replace(/\/$/, '');
 
 const state = new Map();
 
@@ -27,6 +27,14 @@ function parsePercentInput(value) {
 function setStatus(message, kind = '') {
   engineStatus.textContent = message;
   engineStatus.className = `status ${kind}`.trim();
+}
+
+function apiUnavailableMessage() {
+  const isLocalApi = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(apiBaseUrl);
+  if (isLocalApi) {
+    return 'Backend do Excel indisponível. Inicie a API em http://127.0.0.1:3000 ou configure uma URL pública HTTPS.';
+  }
+  return `Backend do Excel indisponível em ${apiBaseUrl}. Verifique se a API está online e liberada para este site.`;
 }
 
 function updateState(cell, value) {
@@ -161,7 +169,10 @@ async function generateWorkbook() {
     downloadBlob(blob, filenameFromResponse(response));
     setStatus('Planilha calculada pelo Excel gerada', 'ready');
   } catch (error) {
-    setStatus(error.message || 'Erro ao gerar a planilha.', 'error');
+    const message = error instanceof TypeError && /fetch/i.test(error.message)
+      ? apiUnavailableMessage()
+      : (error.message || 'Erro ao gerar a planilha.');
+    setStatus(message, 'error');
   } finally {
     generateButton.disabled = false;
   }
