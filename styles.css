@@ -106,7 +106,7 @@ h2 {
 
 .result-strip {
   display: grid;
-  grid-template-columns: repeat(4, minmax(118px, 1fr));
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
   gap: 8px;
   margin-top: 14px;
 }
@@ -132,6 +132,12 @@ h2 {
   overflow-wrap: anywhere;
   color: var(--text);
   font-size: 0.95rem;
+}
+
+.result-note {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
 }
 
 .primary-button {

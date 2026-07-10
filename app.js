@@ -10,8 +10,6 @@ const engineStatus = document.querySelector('#engineStatus');
 const generateButton = document.querySelector('#generateButton');
 const annualResult = document.querySelector('#annualResult');
 const monthlyResult = document.querySelector('#monthlyResult');
-const targetResult = document.querySelector('#targetResult');
-const priceResult = document.querySelector('#priceResult');
 const backendBaseUrl = String(apiConfig.baseUrl || '').replace(/\/+$/, '');
 
 generateButton.disabled = true;
@@ -150,8 +148,6 @@ function updateResults(results) {
   lastResults = results;
   annualResult.textContent = currencyFormatter.format(results.annual || 0);
   monthlyResult.textContent = currencyFormatter.format(results.monthly || 0);
-  targetResult.textContent = decimalFormatter.format(results.target || 0);
-  priceResult.textContent = currencyFormatter.format(results.price || 0);
 }
 
 function updateState(cell, value) {
