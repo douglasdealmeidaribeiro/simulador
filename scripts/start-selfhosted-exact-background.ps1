@@ -40,8 +40,8 @@ function Get-LiveProcessFromPidFile {
     Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
     return $null
   }
-  $pid = [int]$pidRaw
-  $process = Get-Process -Id $pid -ErrorAction SilentlyContinue
+  $procId = [int]$pidRaw
+  $process = Get-Process -Id $procId -ErrorAction SilentlyContinue
   if ($null -eq $process) {
     Remove-Item -LiteralPath $Path -Force -ErrorAction SilentlyContinue
     return $null

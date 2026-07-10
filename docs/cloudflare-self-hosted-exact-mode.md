@@ -187,6 +187,38 @@ npm run exact:selfhosted:task:uninstall
 Observacao: a tarefa inicia no logon do usuario atual (modo interativo), que e o modo mais compativel para automacao do Excel COM.
 Se o Windows negar permissao para criar Scheduled Task, o script cria automaticamente um fallback em `HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run` com o mesmo comando de inicializacao.
 
+## Monitoramento automatico e auto-recuperacao
+
+Instalar tarefa de monitoramento (watchdog):
+
+```powershell
+npm run exact:selfhosted:monitor:install
+```
+
+Esse watchdog roda periodicamente e:
+
+1. verifica o health local da API
+2. verifica se o processo do tunnel esta ativo
+3. se houver falha, executa o start em segundo plano para recuperar
+
+Executar watchdog uma vez (teste manual):
+
+```powershell
+npm run exact:selfhosted:monitor:run
+```
+
+Remover monitoramento:
+
+```powershell
+npm run exact:selfhosted:monitor:uninstall
+```
+
+Para manutencao manual (quando quiser manter a API parada), primeiro remova/desative o monitoramento para evitar religamento automatico.
+
+Log do watchdog:
+
+- `.runtime/watchdog.log`
+
 ## Etapa 9 - Teste fim a fim
 
 1. Abra `https://api.seudominio.com/health`

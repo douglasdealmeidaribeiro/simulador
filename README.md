@@ -56,6 +56,9 @@ Arquivos auxiliares incluidos:
 - [scripts/set-selfhosted-backend-mode.ps1](scripts/set-selfhosted-backend-mode.ps1)
 - [scripts/install-selfhosted-startup-task.ps1](scripts/install-selfhosted-startup-task.ps1)
 - [scripts/uninstall-selfhosted-startup-task.ps1](scripts/uninstall-selfhosted-startup-task.ps1)
+- [scripts/watch-selfhosted-health.ps1](scripts/watch-selfhosted-health.ps1)
+- [scripts/install-selfhosted-monitor-task.ps1](scripts/install-selfhosted-monitor-task.ps1)
+- [scripts/uninstall-selfhosted-monitor-task.ps1](scripts/uninstall-selfhosted-monitor-task.ps1)
 - [cloudflare/config.example.yml](cloudflare/config.example.yml)
 
 Fluxo resumido:

@@ -7,7 +7,10 @@
     "exact:selfhosted:bg:start": "powershell.exe -ExecutionPolicy Bypass -File scripts/start-selfhosted-exact-background.ps1",
     "exact:selfhosted:bg:stop": "powershell.exe -ExecutionPolicy Bypass -File scripts/stop-selfhosted-exact-background.ps1",
     "exact:selfhosted:task:install": "powershell.exe -ExecutionPolicy Bypass -File scripts/install-selfhosted-startup-task.ps1",
-    "exact:selfhosted:task:uninstall": "powershell.exe -ExecutionPolicy Bypass -File scripts/uninstall-selfhosted-startup-task.ps1"
+    "exact:selfhosted:task:uninstall": "powershell.exe -ExecutionPolicy Bypass -File scripts/uninstall-selfhosted-startup-task.ps1",
+    "exact:selfhosted:monitor:run": "powershell.exe -ExecutionPolicy Bypass -File scripts/watch-selfhosted-health.ps1",
+    "exact:selfhosted:monitor:install": "powershell.exe -ExecutionPolicy Bypass -File scripts/install-selfhosted-monitor-task.ps1",
+    "exact:selfhosted:monitor:uninstall": "powershell.exe -ExecutionPolicy Bypass -File scripts/uninstall-selfhosted-monitor-task.ps1"
   },
   "dependencies": {}
 }
