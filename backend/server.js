@@ -18,6 +18,7 @@ function sendCors(res) {
   res.setHeader('Access-Control-Allow-Origin', FRONTEND_ORIGIN);
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition,X-Simulation-Summary');
 }
 
 function json(res, status, payload) {
@@ -97,7 +98,7 @@ async function handleSimulation(req, res) {
   const workDir = path.join(os.tmpdir(), 'simulador-excel');
   fs.mkdirSync(workDir, { recursive: true });
   const inputPath = path.join(workDir, `${id}.json`);
-  const outputPath = path.join(workDir, `${id}.xlsm`);
+  const outputPath = path.join(workDir, `${id}.xlsx`);
 
   try {
     if (!fs.existsSync(WORKBOOK_PATH)) {
@@ -110,14 +111,22 @@ async function handleSimulation(req, res) {
     }
 
     fs.writeFileSync(inputPath, JSON.stringify(payload), 'utf8');
-    await runExcelSimulation(inputPath, outputPath);
+    const excelOutput = await runExcelSimulation(inputPath, outputPath);
+    let summaryHeader = '';
+    try {
+      const summary = JSON.parse(String(excelOutput || '').trim());
+      summaryHeader = encodeURIComponent(JSON.stringify(summary));
+    } catch (_error) {
+      summaryHeader = '';
+    }
 
     const file = fs.readFileSync(outputPath);
     sendCors(res);
     res.writeHead(200, {
-      'Content-Type': 'application/vnd.ms-excel.sheet.macroEnabled.12',
-      'Content-Disposition': 'attachment; filename="simulador-modelagem-calculado.xlsm"',
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': 'attachment; filename="orcamento-mensal-simulado.xlsx"',
       'Content-Length': file.length,
+      'X-Simulation-Summary': summaryHeader,
     });
     res.end(file);
   } catch (error) {

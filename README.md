@@ -1,31 +1,48 @@
 # Simulador de Modelagem Economico-Financeira
 
-Aplicacao web estatica com formulario baseado na aba `SIMULADOR` da planilha original. Os calculos rodam no proprio navegador com o modelo extraido da planilha, sem backend, sem PowerShell e sem Excel instalado no servidor.
+Aplicacao web com formulario baseado na aba `SIMULADOR` da planilha original. O calculo roda no navegador (modo gratuito) e gera arquivo de resultados localmente.
 
 ## Arquitetura
 
 - Frontend: HTML, CSS e JavaScript estaticos.
-- Hospedagem: compativel com GitHub Pages.
 - Calculo: `worker.js` usa HyperFormula e `assets/workbook-model.js`.
-- Saida: arquivo `.xls` com resumo dos resultados, dados gerais, centros de custo e ajustes informados.
+- Saida: arquivo `.xls` de resultados gerado no navegador.
+- Opcional avancado: backend Excel (`backend/server.js`) para cenarios de alta aderencia.
 
 ## Como usar
 
-Abra a pagina publicada no GitHub Pages, preencha os campos e clique em:
+Abra a pagina, preencha os campos e clique em:
 
 ```text
 Gerar planilha calculada
 ```
 
-O navegador executa a simulacao localmente e baixa uma planilha de resultados.
+O app devolve uma planilha `.xls` com resultados simulados.
 
-## Publicacao no GitHub Pages
+## Execucao
 
-1. Envie os arquivos para o repositorio.
-2. No GitHub, acesse `Settings > Pages`.
-3. Use `Deploy from branch`.
-4. Selecione a branch `main` e a pasta `/root`.
-5. Aguarde a publicacao.
+Abra o frontend e use normalmente. O backend nao e necessario no modo gratuito.
+
+## Producao no GitHub Pages
+
+Modo recomendado para custo zero: publicar somente o frontend no GitHub Pages.
+
+### 1) Publicar frontend no Pages
+
+Este repositorio ja inclui o workflow:
+
+- [.github/workflows/deploy-pages.yml](.github/workflows/deploy-pages.yml)
+
+Passos:
+
+1. Envie para a branch `main`.
+2. No GitHub, abra `Settings > Pages`.
+3. Em `Build and deployment`, selecione `GitHub Actions`.
+4. Aguarde o workflow `Deploy GitHub Pages` concluir.
+
+### 2) (Opcional) Backend Excel
+
+Se no futuro voce quiser maior aderencia ao Excel, pode habilitar backend depois em `assets/api-config.js`.
 
 Comandos usuais:
 
@@ -37,7 +54,7 @@ git push origin main
 
 ## Desenvolvimento local
 
-Por usar Web Worker, prefira abrir por um servidor local:
+Por usar Web Worker, prefira abrir por servidor local:
 
 ```powershell
 python -m http.server 8000
@@ -66,4 +83,4 @@ node --check worker.js
 
 ## Observacao
 
-A versao estatica nao entrega o arquivo `.xlsm` original com macros recalculadas pelo Excel. Ela entrega uma planilha `.xls` de resultados calculados no navegador, adequada para publicacao gratuita no GitHub Pages.
+No modo gratuito/local pode haver diferencas em alguns cenarios em relacao ao Excel original.

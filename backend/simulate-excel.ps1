@@ -55,15 +55,51 @@ function Invoke-WithRetry {
   throw 'O Excel não retornou o objeto esperado.'
 }
 
+function Normalize-Ascii {
+  param([string]$Text)
+  if ($null -eq $Text) {
+    return ''
+  }
+  $normalized = $Text.Normalize([Text.NormalizationForm]::FormD)
+  $ascii = -join ($normalized.ToCharArray() | Where-Object { [Globalization.CharUnicodeInfo]::GetUnicodeCategory($_) -ne [Globalization.UnicodeCategory]::NonSpacingMark })
+  return $ascii.ToLowerInvariant()
+}
+
+function Get-WorksheetLike {
+  param(
+    [Parameter(Mandatory = $true)]$Workbook,
+    [Parameter(Mandatory = $true)][string]$Pattern
+  )
+
+  $target = Normalize-Ascii $Pattern
+  foreach ($ws in $Workbook.Worksheets) {
+    $name = [string]$ws.Name
+    if ((Normalize-Ascii $name) -like "*$target*") {
+      return $ws
+    }
+  }
+
+  throw "Aba nao encontrada com padrao: $Pattern"
+}
+
 $resolvedWorkbook = (Resolve-Path -LiteralPath $WorkbookPath).Path
 $payload = Get-Content -LiteralPath $InputJsonPath -Raw | ConvertFrom-Json
 
-Copy-Item -LiteralPath $resolvedWorkbook -Destination $OutputWorkbookPath -Force
+$calcWorkbookPath = [System.IO.Path]::Combine(
+  [System.IO.Path]::GetDirectoryName($OutputWorkbookPath),
+  [System.IO.Path]::GetFileNameWithoutExtension($OutputWorkbookPath) + '-calc.xlsm'
+)
+
+Copy-Item -LiteralPath $resolvedWorkbook -Destination $calcWorkbookPath -Force
 
 $excel = $null
 $workbook = $null
 $simulador = $null
 $controle = $null
+$orcamentoMensal = $null
+$mensalWorkbook = $null
+$mensalSheet = $null
+$usedRange = $null
 
 try {
   $excel = New-Object -ComObject Excel.Application
@@ -73,7 +109,7 @@ try {
   $excel.AutomationSecurity = 1
   $excel.EnableEvents = $false
 
-  $workbook = Invoke-WithRetry { $excel.Workbooks.Open($OutputWorkbookPath) }
+  $workbook = Invoke-WithRetry { $excel.Workbooks.Open($calcWorkbookPath) }
   $simulador = Invoke-WithRetry { $workbook.Worksheets.Item('SIMULADOR') }
   $controle = Invoke-WithRetry { $workbook.Worksheets.Item('Controle') }
 
@@ -100,18 +136,36 @@ try {
   }
 
   $excel.CalculateFullRebuild()
-  $workbook.Save()
+
+  $orcamentoMensal = Get-WorksheetLike -Workbook $workbook -Pattern 'orcamento (mensal)'
+  $orcamentoMensal.Copy()
+  $mensalWorkbook = Invoke-WithRetry { $excel.ActiveWorkbook }
+  $mensalSheet = Invoke-WithRetry { $mensalWorkbook.Worksheets.Item(1) }
+  $usedRange = $mensalSheet.UsedRange
+  # Converte formulas em valores para entregar uma planilha final fechada e fiel ao resultado pos-simulacao.
+  $usedRange.Value2 = $usedRange.Value2
+  [void]$mensalWorkbook.SaveAs($OutputWorkbookPath, 51)
+  $mensalWorkbook.Close($true)
+  $mensalWorkbook = $null
 
   $summary = [ordered]@{
     annual = $simulador.Range('G3').Value2
     monthly = $simulador.Range('G4').Value2
+    price = $controle.Range('M3').Value2
     target = $controle.Range('M13').Value2
   }
   $summary | ConvertTo-Json -Compress
 } finally {
+  if ($null -ne $mensalWorkbook) {
+    try {
+      $mensalWorkbook.Close($true)
+    } catch {
+      # Best effort cleanup.
+    }
+  }
   if ($null -ne $workbook) {
     try {
-      $workbook.Close($true)
+      $workbook.Close($false)
     } catch {
       # Best effort cleanup.
     }
@@ -123,10 +177,21 @@ try {
       # Best effort cleanup.
     }
   }
+  Release-ComObject $usedRange
+  Release-ComObject $mensalSheet
+  Release-ComObject $mensalWorkbook
+  Release-ComObject $orcamentoMensal
   Release-ComObject $controle
   Release-ComObject $simulador
   Release-ComObject $workbook
   Release-ComObject $excel
   [GC]::Collect()
   [GC]::WaitForPendingFinalizers()
+  if (Test-Path -LiteralPath $calcWorkbookPath) {
+    try {
+      Remove-Item -LiteralPath $calcWorkbookPath -Force
+    } catch {
+      # Best effort cleanup.
+    }
+  }
 }

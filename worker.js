@@ -180,43 +180,56 @@ function evaluatePrice(price) {
 }
 
 function goalSeek(goal = 0.1) {
-  let low = 0;
-  let high = 15000;
-  let fLow = evaluatePrice(low) - goal;
-  let fHigh = evaluatePrice(high) - goal;
-
-  let guard = 0;
-  while (fLow * fHigh > 0 && guard < 30) {
-    high *= 1.6;
-    fHigh = evaluatePrice(high) - goal;
-    guard += 1;
+  let price = Number(get(sheetIds.controle, 'M3'));
+  if (!Number.isFinite(price) || price < 0) {
+    price = 15000;
   }
 
-  if (fLow * fHigh > 0) {
-    throw new Error('Não foi possível encontrar intervalo para a meta do VPL.');
-  }
-
-  let mid = high;
-  let fMid = fHigh;
+  let residual = evaluatePrice(price) - goal;
+  let bestPrice = price;
+  let bestResidual = residual;
+  let step = Math.max(1, Math.abs(price) * 0.01);
   let iterations = 0;
+  const tolerance = 0.0001;
 
-  for (; iterations < 80; iterations += 1) {
-    mid = (low + high) / 2;
-    fMid = evaluatePrice(mid) - goal;
-    if (Math.abs(fMid) < 0.000001 || Math.abs(high - low) < 0.000001) {
+  for (; iterations < 100; iterations += 1) {
+    residual = evaluatePrice(price) - goal;
+    if (Math.abs(residual) < Math.abs(bestResidual)) {
+      bestResidual = residual;
+      bestPrice = price;
+    }
+    if (Math.abs(residual) <= tolerance) {
       break;
     }
-    if (fLow * fMid <= 0) {
-      high = mid;
-      fHigh = fMid;
+
+    const probePrice = Math.max(0, price + step);
+    const probeResidual = evaluatePrice(probePrice) - goal;
+    const denominator = probeResidual - residual;
+
+    let nextPrice;
+    if (Number.isFinite(denominator) && Math.abs(denominator) > 1e-12) {
+      nextPrice = price - residual * (probePrice - price) / denominator;
     } else {
-      low = mid;
-      fLow = fMid;
+      nextPrice = residual > 0 ? price - step : price + step;
     }
+
+    if (!Number.isFinite(nextPrice)) {
+      nextPrice = residual > 0 ? price - step : price + step;
+    }
+
+    nextPrice = Math.max(0, nextPrice);
+    const maxJump = Math.max(500, Math.abs(price) * 0.5);
+    const jump = nextPrice - price;
+    if (Math.abs(jump) > maxJump) {
+      nextPrice = price + Math.sign(jump) * maxJump;
+    }
+
+    step = Math.max(0.5, Math.abs(nextPrice - price) * 0.5);
+    price = nextPrice;
   }
 
-  set(sheetIds.controle, 'M3', mid);
-  return { price: mid, iterations, residual: fMid };
+  set(sheetIds.controle, 'M3', bestPrice);
+  return { price: bestPrice, iterations, residual: bestResidual };
 }
 
 function applyUpdates(updates) {

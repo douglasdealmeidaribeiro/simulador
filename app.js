@@ -1,9 +1,11 @@
 const config = window.SIMULADOR_CONFIG;
+const apiConfig = window.API_CONFIG || {};
 
 const state = new Map();
 let engineReady = false;
 let running = false;
 let lastResults = null;
+let pendingExactExport = false;
 
 const engineStatus = document.querySelector('#engineStatus');
 const generateButton = document.querySelector('#generateButton');
@@ -11,7 +13,9 @@ const annualResult = document.querySelector('#annualResult');
 const monthlyResult = document.querySelector('#monthlyResult');
 const targetResult = document.querySelector('#targetResult');
 const priceResult = document.querySelector('#priceResult');
-const worker = new Worker('worker.js?v=20260710-6');
+const worker = new Worker('worker.js?v=20260710-7');
+const backendBaseUrl = String(apiConfig.baseUrl || '').replace(/\/+$/, '');
+const preferExcelBackend = apiConfig.preferExcelBackend !== false;
 
 generateButton.disabled = true;
 
@@ -46,6 +50,81 @@ function parsePercentInput(value) {
 function setStatus(message, kind = '') {
   engineStatus.textContent = message;
   engineStatus.className = `status ${kind}`.trim();
+}
+
+function apiUrl(path) {
+  if (!backendBaseUrl) {
+    return path;
+  }
+  return `${backendBaseUrl}${path}`;
+}
+
+function filenameFromContentDisposition(disposition, fallback) {
+  const value = String(disposition || '');
+  const match = value.match(/filename\*?=(?:UTF-8''|"?)([^";]+)/i);
+  if (!match) {
+    return fallback;
+  }
+  try {
+    return decodeURIComponent(match[1].replace(/"/g, '').trim());
+  } catch (_error) {
+    return match[1].replace(/"/g, '').trim() || fallback;
+  }
+}
+
+function parseBackendSummary(encodedHeader) {
+  if (!encodedHeader) {
+    return null;
+  }
+  try {
+    return JSON.parse(decodeURIComponent(encodedHeader));
+  } catch (_error) {
+    return null;
+  }
+}
+
+async function generateWithBackend(updates) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 2 * 60 * 1000);
+
+  try {
+    const response = await fetch(apiUrl('/api/simular'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ updates }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      let details = '';
+      try {
+        const payload = await response.json();
+        details = payload?.error || '';
+      } catch (_error) {
+        details = '';
+      }
+      throw new Error(details || `Falha no backend Excel (${response.status}).`);
+    }
+
+    const blob = await response.blob();
+    const contentDisposition = response.headers.get('Content-Disposition');
+    const filename = filenameFromContentDisposition(contentDisposition, `orcamento-mensal-simulado-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    const summary = parseBackendSummary(response.headers.get('X-Simulation-Summary'));
+
+    if (summary && typeof summary === 'object') {
+      updateResults({
+        annual: Number(summary.annual || 0),
+        monthly: Number(summary.monthly || 0),
+        target: Number(summary.target || 0),
+        price: Number(summary.price || summary.annual || 0),
+      });
+    }
+
+    downloadBlob(blob, filename);
+    setStatus('Planilha Orçamento (Mensal) gerada no Excel com dados pós-simulação.', 'ready');
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function updateResults(results) {
@@ -246,19 +325,31 @@ function setRunning(value) {
   generateButton.disabled = !engineReady || running;
 }
 
-function generateWorkbook() {
+async function generateWorkbook() {
   if (!engineReady) {
     setStatus('Motor de cálculo ainda está carregando...', 'error');
     return;
   }
 
   setRunning(true);
+  const updates = Object.fromEntries(state);
+
+  if (preferExcelBackend) {
+    setStatus('Calculando e gerando Orçamento (Mensal) no Excel (backend)...');
+    try {
+      await generateWithBackend(updates);
+      setRunning(false);
+      return;
+    } catch (error) {
+      setStatus(`Backend indisponível (${error.message || 'erro desconhecido'}). Calculando localmente e tentando exportar no final...`, 'error');
+    }
+  }
+
+  pendingExactExport = false;
   setStatus('Calculando no navegador...');
   worker.postMessage({
     type: 'simulate',
-    payload: {
-      updates: Object.fromEntries(state),
-    },
+    payload: { updates },
   });
 }
 
@@ -272,14 +363,37 @@ worker.addEventListener('message', (event) => {
     engineReady = true;
     updateResults(payload.results);
     setRunning(false);
-    setStatus('Motor local pronto. Não há backend ou servidor Excel.', 'ready');
+    setStatus(preferExcelBackend
+      ? 'Motor local pronto. O app tentará backend Excel primeiro e fará fallback local.'
+      : 'Motor local pronto. Exportação local habilitada.', 'ready');
     return;
   }
   if (type === 'result') {
     updateResults(payload.results);
-    downloadWorkbook(payload.results);
-    setRunning(false);
-    setStatus('Planilha de resultados gerada no navegador.', 'ready');
+    if (!preferExcelBackend) {
+      downloadWorkbook(payload.results);
+      setRunning(false);
+      setStatus('Planilha de resultados gerada no navegador.', 'ready');
+      return;
+    }
+
+    if (!pendingExactExport) {
+      setRunning(false);
+      setStatus('Simulação local concluída.', 'ready');
+      return;
+    }
+
+    setStatus('Prévia local concluída. Gerando planilha Orçamento (Mensal) exata via backend...');
+    generateWithBackend(Object.fromEntries(state))
+      .then(() => {
+        pendingExactExport = false;
+        setRunning(false);
+      })
+      .catch((error) => {
+        pendingExactExport = false;
+        setRunning(false);
+        setStatus(`Não foi possível exportar a planilha mensal exata (${error.message || 'erro desconhecido'}).`, 'error');
+      });
     return;
   }
   if (type === 'error') {
