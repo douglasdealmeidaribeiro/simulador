@@ -55,6 +55,30 @@ function Invoke-WithRetry {
   throw 'O Excel não retornou o objeto esperado.'
 }
 
+function Invoke-ComActionWithRetry {
+  param(
+    [scriptblock]$Action,
+    [int]$Attempts = 20,
+    [int]$DelayMilliseconds = 500
+  )
+
+  $lastError = $null
+  for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+    try {
+      & $Action
+      return
+    } catch {
+      $lastError = $_
+    }
+    Start-Sleep -Milliseconds $DelayMilliseconds
+  }
+
+  if ($null -ne $lastError) {
+    throw $lastError
+  }
+  throw 'A automacao do Excel nao concluiu a operacao.'
+}
+
 function Normalize-Ascii {
   param([string]$Text)
   if ($null -eq $Text) {
@@ -118,34 +142,34 @@ try {
     Assert-CellReference -Reference $cell
     $value = $property.Value
     if ($value -is [double] -or $value -is [int] -or $value -is [decimal]) {
-      $simulador.Range($cell).Value2 = [double]$value
+      Invoke-ComActionWithRetry { $simulador.Range($cell).Value2 = [double]$value }
     } else {
-      $simulador.Range($cell).Value2 = [string]$value
+      Invoke-ComActionWithRetry { $simulador.Range($cell).Value2 = [string]$value }
     }
   }
 
-  $excel.CalculateFullRebuild()
+  Invoke-ComActionWithRetry { $excel.CalculateFullRebuild() }
 
   try {
-    $excel.Run("'" + $workbook.Name + "'!SimularESDigital")
+    Invoke-ComActionWithRetry { $excel.Run("'" + $workbook.Name + "'!SimularESDigital") }
   } catch {
-    $controle.Range('M3').Value2 = 15000
+    Invoke-ComActionWithRetry { $controle.Range('M3').Value2 = 15000 }
     $goalCell = $controle.Range('M13')
     $changingCell = $controle.Range('M3')
-    [void]$goalCell.GoalSeek(0.1, $changingCell)
+    Invoke-ComActionWithRetry { [void]$goalCell.GoalSeek(0.1, $changingCell) }
   }
 
-  $excel.CalculateFullRebuild()
+  Invoke-ComActionWithRetry { $excel.CalculateFullRebuild() }
 
   $orcamentoMensal = Get-WorksheetLike -Workbook $workbook -Pattern '(mensal)'
-  $orcamentoMensal.Copy()
+  Invoke-ComActionWithRetry { $orcamentoMensal.Copy() }
   $mensalWorkbook = Invoke-WithRetry { $excel.ActiveWorkbook }
   $mensalSheet = Invoke-WithRetry { $mensalWorkbook.Worksheets.Item(1) }
   $usedRange = $mensalSheet.UsedRange
   # Converte formulas em valores para entregar uma planilha final fechada e fiel ao resultado pos-simulacao.
-  $usedRange.Value2 = $usedRange.Value2
-  [void]$mensalWorkbook.SaveAs($OutputWorkbookPath, 51)
-  $mensalWorkbook.Close($true)
+  Invoke-ComActionWithRetry { $usedRange.Value2 = $usedRange.Value2 }
+  Invoke-ComActionWithRetry { [void]$mensalWorkbook.SaveAs($OutputWorkbookPath, 51) }
+  Invoke-ComActionWithRetry { $mensalWorkbook.Close($true) }
   $mensalWorkbook = $null
 
   $summary = [ordered]@{
