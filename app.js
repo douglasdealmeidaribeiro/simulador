@@ -2,9 +2,11 @@ const config = window.SIMULADOR_CONFIG;
 const apiBaseUrl = (window.SIMULADOR_API_URL || 'http://127.0.0.1:3000').replace(/\/$/, '');
 
 const state = new Map();
+let apiReady = false;
 
 const engineStatus = document.querySelector('#engineStatus');
 const generateButton = document.querySelector('#generateButton');
+generateButton.disabled = true;
 
 function normalizeText(value) {
   return String(value || '')
@@ -35,6 +37,30 @@ function apiUnavailableMessage() {
     return 'Backend do Excel indisponível. Inicie a API em http://127.0.0.1:3000 ou configure uma URL pública HTTPS.';
   }
   return `Backend do Excel indisponível em ${apiBaseUrl}. Verifique se a API está online e liberada para este site.`;
+}
+
+async function checkApiHealth() {
+  setStatus('Verificando backend do Excel...');
+  try {
+    const response = await fetch(`${apiBaseUrl}/health`, {
+      cache: 'no-store',
+      headers: { Accept: 'application/json' },
+    });
+
+    if (!response.ok) {
+      throw new Error(apiUnavailableMessage());
+    }
+
+    apiReady = true;
+    generateButton.disabled = false;
+    generateButton.title = '';
+    setStatus('Backend do Excel conectado', 'ready');
+  } catch (_error) {
+    apiReady = false;
+    generateButton.disabled = true;
+    generateButton.title = apiUnavailableMessage();
+    setStatus(apiUnavailableMessage(), 'error');
+  }
 }
 
 function updateState(cell, value) {
@@ -144,6 +170,11 @@ function downloadBlob(blob, filename) {
 }
 
 async function generateWorkbook() {
+  if (!apiReady) {
+    setStatus(apiUnavailableMessage(), 'error');
+    return;
+  }
+
   generateButton.disabled = true;
   setStatus('Enviando para o Excel no servidor...');
 
@@ -172,15 +203,16 @@ async function generateWorkbook() {
     const message = error instanceof TypeError && /fetch/i.test(error.message)
       ? apiUnavailableMessage()
       : (error.message || 'Erro ao gerar a planilha.');
+    apiReady = false;
     setStatus(message, 'error');
   } finally {
-    generateButton.disabled = false;
+    generateButton.disabled = !apiReady;
   }
 }
 
 renderGeneral();
 renderCostCenters();
 renderBudget();
-setStatus('Pronto para gerar no Excel', 'ready');
+checkApiHealth();
 document.querySelector('#budgetFilter').addEventListener('input', applyFilter);
 generateButton.addEventListener('click', generateWorkbook);
