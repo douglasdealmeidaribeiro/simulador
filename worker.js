@@ -6,6 +6,15 @@ const { HyperFormula } = self.HyperFormula;
 const model = self.WORKBOOK_MODEL;
 let hf;
 let sheetIds;
+let indirectBudgetModel;
+
+const SHELTER_SENSITIVE_ITEMS = new Set([
+  'DIFAL',
+  'REINVESTIMENTOS  REPOSIÇÃO DE INFRAESTRUTURA 1 ANO',
+  'REINVESTIMENTOS REPOSIÇÃO DE INFRAESTRUTURA 5 ANOS ',
+  'REINVESTIMENTOS REPOSIÇÃO DE INFRAESTRUTURA 10 ANOS',
+  'REINVESTIMENTOS REPOSIÇÃO DE INFRAESTRUTURA 15 ANOS',
+]);
 
 function colToNum(col) {
   return [...col].reduce((acc, char) => acc * 26 + char.charCodeAt(0) - 64, 0);
@@ -23,12 +32,123 @@ function valueOf(value) {
   return value;
 }
 
+function staticValue(sheet, ref) {
+  const value = sheet.cells[ref];
+  if (typeof value === 'string' && value.startsWith('=')) {
+    return sheet.cache?.[ref] ?? 0;
+  }
+  return value ?? sheet.cache?.[ref] ?? 0;
+}
+
 function get(sheet, ref) {
   return valueOf(hf.getCellValue(refToAddress(ref, sheet)));
 }
 
 function set(sheet, ref, value) {
   hf.setCellContents(refToAddress(ref, sheet), [[value]]);
+}
+
+function numberFromSim(ref, fallback = 0) {
+  const value = get(sheetIds.simulador, ref);
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function isSim(ref) {
+  return String(get(sheetIds.simulador, ref)).trim().toUpperCase() === 'SIM';
+}
+
+function buildIndirectBudgetModel() {
+  const simulador = model.sheets.find((sheet) => sheet.name === 'SIMULADOR');
+  const mensal = model.sheets.find((sheet) => sheet.name.endsWith('(Mensal)'));
+  const origem = model.sheets.find((sheet) => sheet.name.endsWith('(Origem)'));
+
+  const itemToBudgetRow = new Map();
+  for (let row = 11; row <= 102; row += 1) {
+    const item = staticValue(simulador, `E${row}`);
+    if (item) {
+      itemToBudgetRow.set(item, row);
+    }
+  }
+
+  const centerToToggleRow = new Map();
+  for (let row = 11; row <= 26; row += 1) {
+    const center = staticValue(simulador, `B${row}`);
+    if (center) {
+      centerToToggleRow.set(center, row);
+    }
+  }
+
+  const rows = [];
+  for (let row = 7; row <= 87; row += 1) {
+    const item = staticValue(mensal, `A${row}`);
+    const budgetRow = itemToBudgetRow.get(item);
+    const center = budgetRow ? staticValue(simulador, `F${budgetRow}`) : null;
+    const toggleRow = centerToToggleRow.get(center);
+    const value = staticValue(mensal, `S${row}`);
+    if (!item || !budgetRow || !toggleRow || typeof value !== 'number' || value === 0) {
+      continue;
+    }
+    rows.push({
+      row,
+      item,
+      value,
+      budgetRow,
+      toggleRef: `C${toggleRow}`,
+      isInvestment: staticValue(mensal, `B${row}`) === 'Investimentos',
+      isCost: staticValue(mensal, `B${row}`) === 'Custos_despesas',
+      isReplacement: staticValue(mensal, `C${row}`) === 'Reposição_de_infraestrutura',
+      includeInvestments: staticValue(mensal, `I${row}`) === 'SIM',
+      includePlans: staticValue(mensal, `L${row}`) === 'SIM',
+      shelterSensitive: SHELTER_SENSITIVE_ITEMS.has(item),
+    });
+  }
+
+  return {
+    rows,
+    difalBase: staticValue(origem, 'D32'),
+    replacements: {
+      D62: staticValue(origem, 'D62'),
+      D66: staticValue(origem, 'D66'),
+      D68: staticValue(origem, 'D68'),
+      D70: staticValue(origem, 'D70'),
+    },
+  };
+}
+
+function indirectRowValue(row) {
+  if (!isSim(row.toggleRef)) {
+    return 0;
+  }
+  if (row.shelterSensitive && !isSim('C15')) {
+    return 0;
+  }
+  return row.value * (1 + numberFromSim(`G${row.budgetRow}`));
+}
+
+function indirectSum(predicate) {
+  return indirectBudgetModel.rows
+    .filter(predicate)
+    .reduce((sum, row) => sum + indirectRowValue(row), 0);
+}
+
+function applyIndirectBudgets() {
+  const riskInvestments = numberFromSim('C3');
+  const riskOperations = numberFromSim('C4');
+  const investmentSum = indirectSum((row) => row.isInvestment && row.includeInvestments);
+  const costSum = indirectSum((row) => row.isCost && row.includeInvestments);
+  const replacementSum = indirectSum((row) => row.isReplacement && row.includeInvestments);
+  const plansSum = indirectSum((row) => row.includePlans);
+
+  set(sheetIds.origem, 'D23', investmentSum * riskInvestments * (isSim('C25') ? 1 : 0) * (1 + numberFromSim('G31')));
+  set(sheetIds.origem, 'D24', costSum * riskOperations * (isSim('C17') ? 1 : 0) * (1 + numberFromSim('G32')));
+  set(sheetIds.origem, 'D25', replacementSum * riskInvestments * (isSim('C17') ? 1 : 0) * (1 + numberFromSim('G33')));
+  set(sheetIds.origem, 'D32', indirectBudgetModel.difalBase * (isSim('C13') ? 1 : 0) * (isSim('C15') ? 1 : 0) * (1 + numberFromSim('G40')));
+  set(sheetIds.origem, 'D59', plansSum * 0.05 * (isSim('C25') ? 1 : 0) * (1 + numberFromSim('G67')));
+
+  for (const [ref, value] of Object.entries(indirectBudgetModel.replacements)) {
+    const budgetRow = Number(ref.slice(1)) + 8;
+    set(sheetIds.origem, ref, value * (isSim('C25') ? 1 : 0) * (isSim('C15') ? 1 : 0) * (1 + numberFromSim(`G${budgetRow}`)));
+  }
 }
 
 function buildSheets() {
@@ -103,6 +223,7 @@ function applyUpdates(updates) {
   for (const [ref, value] of Object.entries(updates)) {
     set(sheetIds.simulador, ref, value);
   }
+  applyIndirectBudgets();
 }
 
 function init() {
@@ -114,7 +235,10 @@ function init() {
   sheetIds = {
     simulador: hf.getSheetId('SIMULADOR'),
     controle: hf.getSheetId('Controle'),
+    origem: hf.getSheetId('Orçamento (Origem)'),
   };
+  indirectBudgetModel = buildIndirectBudgetModel();
+  applyIndirectBudgets();
   postMessage({ type: 'ready', payload: { results: currentResults() } });
 }
 
