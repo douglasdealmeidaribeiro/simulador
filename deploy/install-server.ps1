@@ -8,13 +8,6 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-function Assert-Command {
-  param([string]$Name)
-  if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
-    throw "Comando nao encontrado: $Name. Instale antes de continuar."
-  }
-}
-
 function Test-ExcelCom {
   $excel = $null
   try {
@@ -29,12 +22,19 @@ function Test-ExcelCom {
   }
 }
 
-Assert-Command git
-
 if (Test-Path -LiteralPath (Join-Path $ProjectPath '.git')) {
+  if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+    Write-Host "Git nao encontrado. Mantendo arquivos existentes em $ProjectPath."
+  } else {
   Write-Host "Atualizando repositorio em $ProjectPath..."
   git -C $ProjectPath pull --ff-only
+  }
+} elseif (Test-Path -LiteralPath (Join-Path $ProjectPath 'backend\server.ps1')) {
+  Write-Host "Usando arquivos existentes em $ProjectPath."
 } else {
+  if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+    throw "Git nao encontrado e $ProjectPath ainda nao contem a aplicacao. Baixe o ZIP do GitHub ou instale o Git."
+  }
   if (-not (Test-Path -LiteralPath $ProjectPath)) {
     New-Item -ItemType Directory -Path $ProjectPath -Force | Out-Null
   }
