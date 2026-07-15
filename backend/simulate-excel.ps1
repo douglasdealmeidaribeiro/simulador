@@ -120,12 +120,10 @@ $excel = $null
 $workbook = $null
 $simulador = $null
 $controle = $null
-$orcamentoMensal = $null
-$mensalWorkbook = $null
-$mensalSheet = $null
-$usedRange = $null
+$currentStep = 'Inicializando'
 
 try {
+  $currentStep = 'Criando instancia do Excel'
   $excel = New-Object -ComObject Excel.Application
   $excel.Visible = $false
   $excel.DisplayAlerts = $false
@@ -133,10 +131,13 @@ try {
   $excel.AutomationSecurity = 1
   $excel.EnableEvents = $false
 
+  $currentStep = 'Abrindo planilha de calculo'
   $workbook = Invoke-WithRetry { $excel.Workbooks.Open($calcWorkbookPath) }
+  $currentStep = 'Localizando abas SIMULADOR e Controle'
   $simulador = Invoke-WithRetry { $workbook.Worksheets.Item('SIMULADOR') }
   $controle = Invoke-WithRetry { $workbook.Worksheets.Item('Controle') }
 
+  $currentStep = 'Aplicando dados do formulario'
   foreach ($property in $payload.updates.PSObject.Properties) {
     $cell = [string]$property.Name
     Assert-CellReference -Reference $cell
@@ -148,45 +149,39 @@ try {
     }
   }
 
+  $currentStep = 'Recalculando planilha'
   Invoke-ComActionWithRetry { $excel.CalculateFullRebuild() }
 
   try {
+    $currentStep = 'Executando macro SimularESDigital'
     Invoke-ComActionWithRetry { $excel.Run("'" + $workbook.Name + "'!SimularESDigital") }
   } catch {
+    $currentStep = 'Executando GoalSeek alternativo'
     Invoke-ComActionWithRetry { $controle.Range('M3').Value2 = 15000 }
     $goalCell = $controle.Range('M13')
     $changingCell = $controle.Range('M3')
     Invoke-ComActionWithRetry { [void]$goalCell.GoalSeek(0.1, $changingCell) }
   }
 
+  $currentStep = 'Recalculando resultado final'
   Invoke-ComActionWithRetry { $excel.CalculateFullRebuild() }
 
-  $orcamentoMensal = Get-WorksheetLike -Workbook $workbook -Pattern '(mensal)'
-  Invoke-ComActionWithRetry { $orcamentoMensal.Copy() }
-  $mensalWorkbook = Invoke-WithRetry { $excel.ActiveWorkbook }
-  $mensalSheet = Invoke-WithRetry { $mensalWorkbook.Worksheets.Item(1) }
-  $usedRange = $mensalSheet.UsedRange
-  # Converte formulas em valores para entregar uma planilha final fechada e fiel ao resultado pos-simulacao.
-  Invoke-ComActionWithRetry { $usedRange.Value2 = $usedRange.Value2 }
-  Invoke-ComActionWithRetry { [void]$mensalWorkbook.SaveAs($OutputWorkbookPath, 51) }
-  Invoke-ComActionWithRetry { $mensalWorkbook.Close($true) }
-  $mensalWorkbook = $null
-
+  $currentStep = 'Lendo resumo da simulacao'
   $summary = [ordered]@{
     annual = $simulador.Range('G3').Value2
     monthly = $simulador.Range('G4').Value2
     price = $controle.Range('M3').Value2
     target = $controle.Range('M13').Value2
   }
+
+  $currentStep = 'Salvando planilha calculada'
+  Invoke-ComActionWithRetry { $workbook.Save() }
+  Copy-Item -LiteralPath $calcWorkbookPath -Destination $OutputWorkbookPath -Force
+
   $summary | ConvertTo-Json -Compress
+} catch {
+  throw "Falha na etapa '$currentStep': $($_.Exception.Message)"
 } finally {
-  if ($null -ne $mensalWorkbook) {
-    try {
-      $mensalWorkbook.Close($true)
-    } catch {
-      # Best effort cleanup.
-    }
-  }
   if ($null -ne $workbook) {
     try {
       $workbook.Close($false)
@@ -201,10 +196,6 @@ try {
       # Best effort cleanup.
     }
   }
-  Release-ComObject $usedRange
-  Release-ComObject $mensalSheet
-  Release-ComObject $mensalWorkbook
-  Release-ComObject $orcamentoMensal
   Release-ComObject $controle
   Release-ComObject $simulador
   Release-ComObject $workbook
