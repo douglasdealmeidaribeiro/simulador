@@ -1,5 +1,6 @@
 param(
   [int]$Port = 3000,
+  [string]$BindAddress = '127.0.0.1',
   [string]$WorkbookPath = '',
   [string]$FrontendOrigin = '*'
 )
@@ -142,6 +143,7 @@ function Write-HttpResponse {
     'Access-Control-Allow-Origin' = $FrontendOrigin
     'Access-Control-Allow-Methods' = 'GET,POST,OPTIONS'
     'Access-Control-Allow-Headers' = 'Content-Type'
+    'Access-Control-Expose-Headers' = 'Content-Disposition, X-Simulation-Summary'
     'Content-Length' = $Body.Length
     'Connection' = 'close'
   }
@@ -178,6 +180,56 @@ function Send-Json {
   Write-HttpResponse -Client $Client -StatusCode $StatusCode -Reason $Reason -Headers @{
     'Content-Type' = 'application/json; charset=utf-8'
   } -Body $body
+}
+
+function Get-MimeType {
+  param([string]$Path)
+
+  switch ([System.IO.Path]::GetExtension($Path).ToLowerInvariant()) {
+    '.html' { return 'text/html; charset=utf-8' }
+    '.css' { return 'text/css; charset=utf-8' }
+    '.js' { return 'application/javascript; charset=utf-8' }
+    '.json' { return 'application/json; charset=utf-8' }
+    '.png' { return 'image/png' }
+    '.jpg' { return 'image/jpeg' }
+    '.jpeg' { return 'image/jpeg' }
+    '.svg' { return 'image/svg+xml' }
+    '.ico' { return 'image/x-icon' }
+    default { return 'application/octet-stream' }
+  }
+}
+
+function Send-StaticFile {
+  param(
+    [System.Net.Sockets.TcpClient]$Client,
+    [string]$RequestPath
+  )
+
+  $relativePath = $RequestPath.TrimStart('/')
+  if ([string]::IsNullOrWhiteSpace($relativePath)) {
+    $relativePath = 'index.html'
+  }
+
+  $relativePath = $relativePath -replace '/', [System.IO.Path]::DirectorySeparatorChar
+  $candidate = [System.IO.Path]::GetFullPath((Join-Path $RootPath $relativePath))
+  $rootFullPath = [System.IO.Path]::GetFullPath($RootPath)
+
+  if (-not $candidate.StartsWith($rootFullPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+    Send-Json -Client $Client -StatusCode 403 -Reason 'Forbidden' -Payload @{ error = 'Acesso negado.' }
+    return
+  }
+
+  $allowedExtensions = @('.html', '.css', '.js', '.json', '.png', '.jpg', '.jpeg', '.svg', '.ico')
+  $extension = [System.IO.Path]::GetExtension($candidate).ToLowerInvariant()
+  if ($allowedExtensions -notcontains $extension -or -not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+    Send-Json -Client $Client -StatusCode 404 -Reason 'Not Found' -Payload @{ error = 'Arquivo não encontrado.' }
+    return
+  }
+
+  $bytes = [System.IO.File]::ReadAllBytes($candidate)
+  Write-HttpResponse -Client $Client -StatusCode 200 -Reason 'OK' -Headers @{
+    'Content-Type' = Get-MimeType -Path $candidate
+  } -Body $bytes
 }
 
 function Invoke-Simulation {
@@ -217,6 +269,11 @@ function Invoke-Simulation {
     ) -join ' '
 
     $process = Start-Process -FilePath 'powershell.exe' -ArgumentList $arguments -Wait -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+    $summary = ''
+    if (Test-Path -LiteralPath $stdoutPath) {
+      $summary = (Get-Content -LiteralPath $stdoutPath -Raw).Trim()
+    }
+
     if ($process.ExitCode -ne 0) {
       $details = @()
       if (Test-Path -LiteralPath $stderrPath) {
@@ -232,7 +289,10 @@ function Invoke-Simulation {
       throw 'A planilha calculada não foi gerada.'
     }
 
-    return [System.IO.File]::ReadAllBytes($outputPath)
+    return @{
+      FileBytes = [System.IO.File]::ReadAllBytes($outputPath)
+      Summary = $summary
+    }
   } finally {
     Remove-Item -LiteralPath $inputPath -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $outputPath -ErrorAction SilentlyContinue
@@ -241,10 +301,11 @@ function Invoke-Simulation {
   }
 }
 
-$listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Parse('127.0.0.1'), $Port)
+$ipAddress = [System.Net.IPAddress]::Parse($BindAddress)
+$listener = [System.Net.Sockets.TcpListener]::new($ipAddress, $Port)
 $listener.Start()
 
-Write-Host "Simulador Excel API em http://127.0.0.1:$Port"
+Write-Host "Simulador Excel em http://${BindAddress}:$Port"
 Write-Host 'Pressione Ctrl+C para encerrar.'
 
 try {
@@ -265,14 +326,24 @@ try {
 
       if ($request.Method -eq 'POST' -and $request.Path -eq '/api/simular') {
         try {
-          $file = Invoke-Simulation -Body $request.Body
+          $result = Invoke-Simulation -Body $request.Body
+          $summaryHeader = ''
+          if (-not [string]::IsNullOrWhiteSpace($result.Summary)) {
+            $summaryHeader = [Uri]::EscapeDataString($result.Summary)
+          }
           Write-HttpResponse -Client $client -StatusCode 200 -Reason 'OK' -Headers @{
             'Content-Type' = 'application/vnd.ms-excel.sheet.macroEnabled.12'
             'Content-Disposition' = 'attachment; filename="simulador-modelagem-calculado.xlsm"'
-          } -Body $file
+            'X-Simulation-Summary' = $summaryHeader
+          } -Body $result.FileBytes
         } catch {
           Send-Json -Client $client -StatusCode 500 -Reason 'Internal Server Error' -Payload @{ error = $_.Exception.Message }
         }
+        continue
+      }
+
+      if ($request.Method -eq 'GET') {
+        Send-StaticFile -Client $client -RequestPath $request.Path
         continue
       }
 

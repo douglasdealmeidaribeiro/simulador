@@ -1,8 +1,8 @@
 window.API_CONFIG = {
-	// Defina para o host da API, por exemplo: 'http://127.0.0.1:3000'.
-	// Em producao no GitHub Pages, preencha com a URL publica do backend Excel.
-	// Vazio significa mesma origem da pagina.
-	baseUrl: 'https://api.datacodebrasil.com.br',
+	// Vazio significa mesma origem da pagina, ideal quando o proprio servidor
+	// Windows entrega a tela e a API.
+	// Em producao no GitHub Pages, preencha com a URL publica HTTPS do backend Excel.
+	baseUrl: '',
 	// A aplicacao usa somente o backend Excel para evitar diferencas do calculo local.
 	preferExcelBackend: true,
 };
