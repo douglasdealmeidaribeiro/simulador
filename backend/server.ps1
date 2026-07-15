@@ -142,7 +142,7 @@ function Write-HttpResponse {
   $allHeaders = [ordered]@{
     'Access-Control-Allow-Origin' = $FrontendOrigin
     'Access-Control-Allow-Methods' = 'GET,POST,OPTIONS'
-    'Access-Control-Allow-Headers' = 'Content-Type'
+    'Access-Control-Allow-Headers' = 'Content-Type, ngrok-skip-browser-warning'
     'Access-Control-Expose-Headers' = 'Content-Disposition, X-Simulation-Summary'
     'Content-Length' = $Body.Length
     'Connection' = 'close'

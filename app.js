@@ -54,6 +54,14 @@ function apiUrl(path) {
   return `${backendBaseUrl}${path}`;
 }
 
+function apiHeaders(headers = {}) {
+  const requestHeaders = { ...headers };
+  if (backendBaseUrl.includes('ngrok')) {
+    requestHeaders['ngrok-skip-browser-warning'] = 'true';
+  }
+  return requestHeaders;
+}
+
 function filenameFromContentDisposition(disposition, fallback) {
   const value = String(disposition || '');
   const match = value.match(/filename\*?=(?:UTF-8''|"?)([^";]+)/i);
@@ -85,7 +93,7 @@ async function generateWithBackend(updates) {
   try {
     const response = await fetch(apiUrl('/api/simular'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: apiHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ updates }),
       signal: controller.signal,
     });
@@ -129,6 +137,7 @@ async function checkBackendHealth() {
   try {
     const response = await fetch(apiUrl('/health'), {
       method: 'GET',
+      headers: apiHeaders(),
       cache: 'no-store',
       signal: controller.signal,
     });
